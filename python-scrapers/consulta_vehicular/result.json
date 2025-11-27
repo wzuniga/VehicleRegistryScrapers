@@ -1,0 +1,21 @@
+{
+  "markdown": "\n# sunarp  \n## Superintendencia Nacional de los Registros Públicos  \n### Consulta Vehicular  \n\n## DATOS DEL VEHÍCULO\n\n<table>\n  <tr>\n    <th>Nº PLACA:</th>\n    <td>A11552</td>\n  </tr>\n<tr>\n    <th>Nº SERIE:</th>\n    <td>JTDBW9333A1187666</td>\n  </tr>\n<tr>\n    <th>Nº VIN:</th>\n    <td>JTDBW9333A1187666</td>\n  </tr>\n<tr>\n    <th>Nº MOTOR:</th>\n    <td>2NZ5613646</td>\n  </tr>\n<tr>\n    <th>COLOR:</th>\n    <td>AZUL METALICO</td>\n  </tr>\n<tr>\n    <th>MARCA:</th>\n    <td>TOYOTA</td>\n  </tr>\n<tr>\n    <th>MODELO:</th>\n    <td>YARIS</td>\n  </tr>\n<tr>\n    <th>PLACA VIGENTE:</th>\n    <td>A11552</td>\n  </tr>\n<tr>\n    <th>PLACA ANTERIOR:</th>\n    <td>NINGUNA</td>\n  </tr>\n<tr>\n    <th>ESTADO:</th>\n    <td>EN CIRCULACION</td>\n  </tr>\n<tr>\n    <th>ANOTACIONES:</th>\n    <td>NINGUNA</td>\n  </tr>\n<tr>\n    <th>SEDE:</th>\n    <td>LIMA</td>\n  </tr>\n<tr>\n    <th>AÑO DE MODELO:</th>\n    <td>2010</td>\n  </tr>\n</table>\n\n## PROPIETARIO(S):\n\n* LOAYZA REVILLA, NAYDA  \n* OVIEDO CORNEJO, JAVIER OCTAVIO  \n\n",
+  "vehicle_data": {
+    "placa": "A11552",
+    "serie": "JTDBW9333A1187666",
+    "vin": "JTDBW9333A1187666",
+    "motor": "2NZ5613646",
+    "color": "AZUL METALICO",
+    "marca": "TOYOTA",
+    "modelo": "YARIS",
+    "placa_vigente": "A11552",
+    "placa_anterior": "NINGUNA",
+    "estado": "EN CIRCULACION",
+    "anotaciones": "NINGUNA",
+    "sede": "LIMA",
+    "anio_modelo": "2010",
+    "propietario": "* LOAYZA REVILLA, NAYDA"
+  },
+  "timestamp": "2025-11-13T13:59:36.729658",
+  "image_path": "consulta_vehicular/result.png"
+}
