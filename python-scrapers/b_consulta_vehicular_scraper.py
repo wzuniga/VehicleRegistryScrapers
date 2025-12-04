@@ -27,11 +27,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suprimir warnings de undetected_chromedriver sobre handle inválido
+import warnings
+warnings.filterwarnings('ignore', category=ResourceWarning)
+warnings.filterwarnings('ignore', message='.*invalid.*handle.*')
+
 
 class ConsultaVehicularScraper:
     def __init__(self):
         self.driver = None
         self.url = 'https://consultavehicular.sunarp.gob.pe/consulta-vehicular/inicio'
+        self.captcha_id = None  # Para almacenar el ID del captcha resuelto
         
     def setup_driver(self, headless=False):
         """Configura el driver de Chrome con opciones anti-detección"""
@@ -112,7 +118,7 @@ class ConsultaVehicularScraper:
             logger.info('✅ Página cargada exitosamente')
             
             # Esperar un poco más para asegurar carga completa
-            time.sleep(3)
+            time.sleep(2)
             
             return True
         except Exception as e:
@@ -137,7 +143,7 @@ class ConsultaVehicularScraper:
             # Escribir la placa con pequeñas pausas para simular escritura humana
             for char in plate:
                 plate_input.send_keys(char)
-                time.sleep(0.1)
+                # time.sleep(0.1)
             
             logger.info('✅ Número de placa ingresado correctamente')
             return True
@@ -242,11 +248,13 @@ class ConsultaVehicularScraper:
             logger.info('📤 Enviando captcha a DeathByCaptcha...')
             
             # Enviar captcha para resolución (deathbycaptcha espera la ruta del archivo)
-            captcha = client.decode(image_path)
+            # verbose=0 para suprimir logs de deathbycaptcha
+            captcha = client.decode(image_path, type=0, verbose=0)
             
             if captcha:
                 result = captcha.get('text', '')
-                logger.info(f'✅ Captcha resuelto: {result}')
+                self.captcha_id = captcha.get('captcha')  # Guardar ID para posible reporte
+                logger.info(f'✅ Captcha resuelto: {result} (ID: {self.captcha_id})')
                 return result.strip().upper()
             else:
                 logger.error('❌ No se pudo resolver el captcha')
@@ -277,6 +285,38 @@ class ConsultaVehicularScraper:
             logger.error(f'❌ Error llenando captcha: {e}')
             return False
     
+    def report_incorrect_captcha(self):
+        """Reporta un captcha incorrectamente resuelto a DeathByCaptcha para obtener reembolso"""
+        if not self.captcha_id:
+            logger.warning('⚠️ No hay captcha_id para reportar')
+            return False
+        
+        try:
+            logger.info(f'📢 Reportando captcha incorrecto (ID: {self.captcha_id}) a DeathByCaptcha...')
+            
+            # Obtener credenciales
+            dbc_username = os.getenv('DBC_USERNAME')
+            dbc_password = os.getenv('DBC_PASSWORD')
+            
+            if not dbc_username or not dbc_password:
+                logger.error('❌ No se encontraron credenciales de DBC')
+                return False
+            
+            # Configurar cliente y reportar
+            client = deathbycaptcha.SocketClient(dbc_username, dbc_password)
+            result = client.report(self.captcha_id)
+            
+            if result:
+                logger.info(f'✅ Captcha reportado exitosamente. Se obtendrá reembolso.')
+                return True
+            else:
+                logger.warning('⚠️ No se pudo reportar el captcha')
+                return False
+                
+        except Exception as e:
+            logger.error(f'❌ Error reportando captcha: {e}')
+            return False
+    
     def click_search_button(self):
         """Hace click en el botón de búsqueda"""
         try:
@@ -292,17 +332,47 @@ class ConsultaVehicularScraper:
             logger.info('✅ Click realizado')
             
             # Esperar a que cargue la página
-            time.sleep(3)
+            # time.sleep(3)
             return True
             
         except Exception as e:
             logger.error(f'❌ Error haciendo click: {e}')
+            # Reportar captcha como incorrecto cuando falla el click
+            logger.warning('⚠️ Posiblemente el captcha fue descifrado incorrectamente')
+            self.report_incorrect_captcha()
             return False
     
-    def get_result_image(self):
-        """Obtiene la imagen del resultado y la guarda"""
+    # COMENTADO: Versión anterior que guardaba screenshot
+    # def get_result_image(self):
+    #     """Obtiene la imagen del resultado y la guarda"""
+    #     try:
+    #         logger.info('🖼️ Obteniendo imagen del resultado...')
+    #         
+    #         result_img_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/img'
+    #         
+    #         # Esperar a que la imagen esté presente
+    #         result_img = WebDriverWait(self.driver, 15).until(
+    #             EC.presence_of_element_located((By.XPATH, result_img_xpath))
+    #         )
+    #         
+    #         logger.info('✅ Imagen del resultado encontrada')
+    #         
+    #         # Obtener la imagen y guardarla
+    #         os.makedirs('consulta_vehicular', exist_ok=True)
+    #         result_path = os.path.join('consulta_vehicular', 'result.png')
+    #         result_img.screenshot(result_path)
+    #         
+    #         logger.info(f'💾 Imagen del resultado guardada como {result_path}')
+    #         return True
+    #         
+    #     except Exception as e:
+    #         logger.error(f'❌ Error obteniendo imagen del resultado: {e}')
+    #         return False
+    
+    def get_result_image_base64(self):
+        """Obtiene el base64 de la imagen del resultado directamente del atributo src"""
         try:
-            logger.info('🖼️ Obteniendo imagen del resultado...')
+            logger.info('🖼️ Obteniendo imagen del resultado en base64...')
             
             result_img_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/img'
             
@@ -313,69 +383,78 @@ class ConsultaVehicularScraper:
             
             logger.info('✅ Imagen del resultado encontrada')
             
-            # Obtener la imagen y guardarla
-            os.makedirs('consulta_vehicular', exist_ok=True)
-            result_path = os.path.join('consulta_vehicular', 'result.png')
-            result_img.screenshot(result_path)
+            # Obtener el atributo src que contiene el base64
+            src_attribute = result_img.get_attribute('src')
             
-            logger.info(f'💾 Imagen del resultado guardada como {result_path}')
-            return True
-            
-        except Exception as e:
-            logger.error(f'❌ Error obteniendo imagen del resultado: {e}')
-            return False
-    
-    def parse_result_with_llama(self, image_path='consulta_vehicular/result.png', output_file='consulta_vehicular/result.json'):
-        """Parsea la imagen del resultado usando LlamaParse y guarda en JSON"""
-        try:
-            logger.info('🤖 Parseando resultado con Llama...')
-            
-            # Obtener API key desde variables de entorno
-            api_key = os.getenv('LLAMA_CLOUD_API_KEY')
-            if not api_key:
-                logger.error('❌ LLAMA_CLOUD_API_KEY no encontrada en .env')
+            if not src_attribute or not src_attribute.startswith('data:image'):
+                logger.error('❌ El atributo src no contiene una imagen base64')
                 return None
             
-            parser = LlamaParse(
-                api_key=api_key,
-                result_type="markdown",
-                parse_mode="parse_page_with_agent",
-                model="openai-gpt-4-1-mini",
-                high_res_ocr=True,
-                adaptive_long_table=True,
-                outlined_table_extraction=True,
-                output_tables_as_HTML=True,
-                precise_bounding_box=True,
-            )
-            documents = parser.load_data(image_path)
-
-            print(documents)
-            
-            # Extraer el texto markdown del documento
-            result_text = documents[0].text if documents else ""
-            
-            # Extraer datos de la tabla HTML
-            vehicle_data = self.extract_vehicle_data_from_markdown(result_text)
-            
-            # Guardar resultado en JSON
-            result_data = {
-                "markdown": result_text,
-                "vehicle_data": vehicle_data,
-                "timestamp": datetime.now().isoformat(),
-                "image_path": image_path
-            }
-            
-            os.makedirs('consulta_vehicular', exist_ok=True)
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(result_data, f, ensure_ascii=False, indent=2)
-            
-            logger.info(f'✅ Resultado parseado y guardado en {output_file}')
-            logger.info(f'📊 Datos extraídos: {vehicle_data}')
-            return result_data
+            # Extraer solo el base64 (remover el prefijo "data:image/png;base64,")
+            if ';base64,' in src_attribute:
+                image_base64 = src_attribute.split(';base64,')[1]
+                logger.info(f'✅ Base64 extraído exitosamente (longitud: {len(image_base64)} caracteres)')
+                return image_base64
+            else:
+                logger.error('❌ No se encontró el marcador base64 en src')
+                return None
             
         except Exception as e:
-            logger.error(f'❌ Error parseando resultado: {e}')
+            logger.error(f'❌ Error obteniendo imagen base64: {e}')
             return None
+    
+    # COMENTADO: Ya no se usa LlamaParse localmente
+    # def parse_result_with_llama(self, image_path='consulta_vehicular/result.png', output_file='consulta_vehicular/result.json'):
+    #     """Parsea la imagen del resultado usando LlamaParse y guarda en JSON"""
+    #     try:
+    #         logger.info('🤖 Parseando resultado con Llama...')')
+    #         
+    #         # Obtener API key desde variables de entorno
+    #         api_key = os.getenv('LLAMA_CLOUD_API_KEY')
+    #         if not api_key:
+    #             logger.error('❌ LLAMA_CLOUD_API_KEY no encontrada en .env')
+    #             return None
+    #         
+    #         parser = LlamaParse(
+    #             api_key=api_key,
+    #             result_type="markdown",
+    #             parse_mode="parse_page_with_agent",
+    #             model="openai-gpt-4-1-mini",
+    #             high_res_ocr=True,
+    #             adaptive_long_table=True,
+    #             outlined_table_extraction=True,
+    #             output_tables_as_HTML=True,
+    #             precise_bounding_box=True,
+    #         )
+    #         documents = parser.load_data(image_path)
+    #
+    #         print(documents)
+    #         
+    #         # Extraer el texto markdown del documento
+    #         result_text = documents[0].text if documents else ""
+    #         
+    #         # Extraer datos de la tabla HTML
+    #         vehicle_data = self.extract_vehicle_data_from_markdown(result_text)
+    #         
+    #         # Guardar resultado en JSON
+    #         result_data = {
+    #             "markdown": result_text,
+    #             "vehicle_data": vehicle_data,
+    #             "timestamp": datetime.now().isoformat(),
+    #             "image_path": image_path
+    #         }
+    #         
+    #         os.makedirs('consulta_vehicular', exist_ok=True)
+    #         with open(output_file, 'w', encoding='utf-8') as f:
+    #             json.dump(result_data, f, ensure_ascii=False, indent=2)
+    #         
+    #         logger.info(f'✅ Resultado parseado y guardado en {output_file}')
+    #         logger.info(f'📊 Datos extraídos: {vehicle_data}')
+    #         return result_data
+    #         
+    #     except Exception as e:
+    #         logger.error(f'❌ Error parseando resultado: {e}')
+    #         return None
     
     def extract_vehicle_data_from_markdown(self, markdown_text):
         """Extrae los datos del vehículo desde el markdown y los convierte a diccionario"""
@@ -453,30 +532,76 @@ class ConsultaVehicularScraper:
             logger.error(f'❌ Error extrayendo datos: {e}')
             return {}
     
-    def send_vehicle_data_to_api(self, vehicle_data, plate_id):
-        """Envía los datos del vehículo al endpoint de la API"""
+    # COMENTADO: Ya no se usa este endpoint
+    # def send_vehicle_data_to_api(self, vehicle_data, plate_id):
+    #     """Envía los datos del vehículo al endpoint de la API"""
+    #     try:
+    #         logger.info('📤 Enviando datos del vehículo a la API...')')
+    #         
+    #         # URL del endpoint
+    #         api_url = 'http://143.110.206.161:3000/vehicles'
+    #         
+    #         # Mapear vehicle_data al formato esperado por la API
+    #         payload = {
+    #             "plateNumber": vehicle_data.get('placa', ''),
+    #             "serialNumber": vehicle_data.get('serie', ''),
+    #             "vinNumber": vehicle_data.get('vin', ''),
+    #             "engineNumber": vehicle_data.get('motor', ''),
+    #             "color": vehicle_data.get('color', ''),
+    #             "brand": vehicle_data.get('marca', ''),
+    #             "model": vehicle_data.get('modelo', ''),
+    #             "currentPlate": vehicle_data.get('placa_vigente', ''),
+    #             "previousPlate": vehicle_data.get('placa_anterior', ''),
+    #             "state": vehicle_data.get('estado', ''),
+    #             "notes": vehicle_data.get('anotaciones', ''),
+    #             "branchOffice": vehicle_data.get('sede', ''),
+    #             "modelYear": int(vehicle_data.get('anio_modelo', 0)) if vehicle_data.get('anio_modelo', '').isdigit() else 0,
+    #             "owners": vehicle_data.get('propietario', '')
+    #         }
+    #         
+    #         # Headers
+    #         headers = {
+    #             'accept': '*/*',
+    #             'Content-Type': 'application/json'
+    #         }
+    #         
+    #         logger.info(f'📊 Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}')
+    #         
+    #         # Enviar request POST
+    #         response = requests.post(api_url, json=payload, headers=headers)
+    #         
+    #         # Verificar respuesta
+    #         if response.status_code in [200, 201]:
+    #             logger.info(f'✅ Datos enviados exitosamente. Respuesta: {response.text}')
+    #             
+    #             # Marcar placa como cargada en la API
+    #             logger.info(f'📝 Marcando placa {plate_id} como cargada...')
+    #             mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/B'
+    #             mark_response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
+    #             mark_response.raise_for_status()
+    #             logger.info(f'✅ Placa {plate_id} marcada como cargada')
+    #             
+    #             return True
+    #         else:
+    #             logger.error(f'❌ Error al enviar datos. Status: {response.status_code}, Respuesta: {response.text}')
+    #             return False
+    #             
+    #     except Exception as e:
+    #         logger.error(f'❌ Error enviando datos a la API: {e}')
+    #         return False
+    
+    def send_image_to_api(self, image_base64, plate_number, plate_id):
+        """Envía la imagen en base64 al endpoint de la API"""
         try:
-            logger.info('📤 Enviando datos del vehículo a la API...')
+            logger.info('📤 Enviando imagen en base64 a la API...')
             
             # URL del endpoint
             api_url = 'http://143.110.206.161:3000/vehicles'
             
-            # Mapear vehicle_data al formato esperado por la API
+            # Payload con imagen base64
             payload = {
-                "plateNumber": vehicle_data.get('placa', ''),
-                "serialNumber": vehicle_data.get('serie', ''),
-                "vinNumber": vehicle_data.get('vin', ''),
-                "engineNumber": vehicle_data.get('motor', ''),
-                "color": vehicle_data.get('color', ''),
-                "brand": vehicle_data.get('marca', ''),
-                "model": vehicle_data.get('modelo', ''),
-                "currentPlate": vehicle_data.get('placa_vigente', ''),
-                "previousPlate": vehicle_data.get('placa_anterior', ''),
-                "state": vehicle_data.get('estado', ''),
-                "notes": vehicle_data.get('anotaciones', ''),
-                "branchOffice": vehicle_data.get('sede', ''),
-                "modelYear": int(vehicle_data.get('anio_modelo', 0)) if vehicle_data.get('anio_modelo', '').isdigit() else 0,
-                "owners": vehicle_data.get('propietario', '')
+                "plateNumber": plate_number,
+                "imageBase64": image_base64
             }
             
             # Headers
@@ -485,15 +610,13 @@ class ConsultaVehicularScraper:
                 'Content-Type': 'application/json'
             }
             
-            logger.info(f'📊 Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}')
+            logger.info(f'📊 Enviando imagen para plate_id: {plate_id}')
             
             # Enviar request POST
-            response = requests.post(api_url, json=payload, headers=headers)
+            response = requests.post(api_url, json=payload, headers=headers, timeout=60)
             
             # Verificar respuesta
-            if response.status_code in [200, 201]:
-                logger.info(f'✅ Datos enviados exitosamente. Respuesta: {response.text}')
-                
+            if response.status_code in [200, 201]:               
                 # Marcar placa como cargada en la API
                 logger.info(f'📝 Marcando placa {plate_id} como cargada...')
                 mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/B'
@@ -503,11 +626,11 @@ class ConsultaVehicularScraper:
                 
                 return True
             else:
-                logger.error(f'❌ Error al enviar datos. Status: {response.status_code}, Respuesta: {response.text}')
+                logger.error(f'❌ Error al enviar imagen. Status: {response.status_code}, Respuesta: {response.text}')
                 return False
                 
         except Exception as e:
-            logger.error(f'❌ Error enviando datos a la API: {e}')
+            logger.error(f'❌ Error enviando imagen a la API: {e}')
             return False
     
     def take_screenshot(self, filename='screenshot.png'):
@@ -565,29 +688,37 @@ class ConsultaVehicularScraper:
             if not self.click_search_button():
                 return False
             
-            # Obtener imagen del resultado
-            if not self.get_result_image():
+            # Obtener imagen del resultado en base64
+            image_base64 = self.get_result_image_base64()
+            if not image_base64:
+                logger.error('❌ No se pudo obtener la imagen base64')
                 return False
             
-            # Parsear resultado con Llama y guardar en JSON
-            result_data = self.parse_result_with_llama('consulta_vehicular/result.png', 'consulta_vehicular/result.json')
-
-            if not result_data:
-                logger.error('❌ No se pudo parsear el resultado')
-                return False
+            # COMENTADO: Ya no se parsea localmente ni se envía vehicle_data
+            # # Parsear resultado con Llama y guardar en JSON
+            # result_data = self.parse_result_with_llama('consulta_vehicular/result.png', 'consulta_vehicular/result.json')
+            #
+            # if not result_data:
+            #     logger.error('❌ No se pudo parsear el resultado')
+            #     return False
+            # 
+            # # Enviar datos del vehículo a la API
+            # vehicle_data = result_data.get('vehicle_data', {})
+            # if vehicle_data:
+            #     if not self.send_vehicle_data_to_api(vehicle_data, plate_id):
+            #         logger.warning('⚠️ No se pudieron enviar los datos a la API, pero el proceso continúa')
+            # else:
+            #     logger.warning('⚠️ No hay datos del vehículo para enviar a la API')
             
-            # Enviar datos del vehículo a la API
-            vehicle_data = result_data.get('vehicle_data', {})
-            if vehicle_data:
-                if not self.send_vehicle_data_to_api(vehicle_data, plate_id):
-                    logger.warning('⚠️ No se pudieron enviar los datos a la API, pero el proceso continúa')
-            else:
-                logger.warning('⚠️ No hay datos del vehículo para enviar a la API')
+            # Enviar imagen en base64 a la API
+            if not self.send_image_to_api(image_base64, plate_number, plate_id):
+                logger.warning('⚠️ No se pudo enviar la imagen a la API')
+                return False
             
             logger.info('✅ Proceso completado exitosamente')
             
             # Tomar captura de pantalla final
-            self.take_screenshot('consulta_vehicular.png')
+            # self.take_screenshot('consulta_vehicular.png')
             
             logger.info('🎉 Proceso completado exitosamente')
             return True
@@ -595,6 +726,9 @@ class ConsultaVehicularScraper:
         except Exception as e:
             logger.error(f'❌ Error en el proceso: {e}')
             return False
+        finally:
+            # Asegurar que el navegador se cierre siempre
+            self.cleanup()
     
     def cleanup(self):
         """Limpia recursos y cierra el navegador"""
@@ -603,8 +737,14 @@ class ConsultaVehicularScraper:
             try:
                 self.driver.quit()
                 logger.info('✅ Navegador cerrado')
-            except Exception as e:
-                logger.error(f'❌ Error cerrando navegador: {e}')
+            except (OSError, Exception) as e:
+                # Ignorar errores de handle inválido en Windows durante cleanup
+                if isinstance(e, OSError) and hasattr(e, 'winerror') and e.winerror == 6:
+                    logger.debug('ℹ️ Handle inválido durante cleanup (esperado en Windows)')
+                else:
+                    logger.error(f'❌ Error cerrando navegador: {e}')
+            finally:
+                self.driver = None
 
 
 def get_pending_plate():
@@ -644,35 +784,42 @@ def main():
     
     scraper = ConsultaVehicularScraper()
     
-    # Obtener placa pendiente de la API
-    plate_data = get_pending_plate()
-    
-    if not plate_data:
-        logger.error('❌ No se pudo obtener la placa de la API')
-        return
-    
-    plate_number = plate_data.get('plate')
-    plate_id = plate_data.get('id')
-    
-    if not plate_number:
-        logger.error('❌ La respuesta de la API no contiene una placa válida')
-        return
-    
-    logger.info(f'📋 Procesando:')
-    logger.info(f'   🆔 ID: {plate_id}')
-    logger.info(f'   🚙 Placa: {plate_number}')
-    
-    # Ejecutar scraper
-    success = scraper.run(
-        plate_number=plate_number,  # Placa obtenida de la API
-        plate_id=plate_id,          # ID de la placa para marcar como cargada
-        headless=True              # Modo headless (opcional, default: False)
-    )
-    
-    if success:
-        logger.info('✅ Scraper ejecutado exitosamente')
-    else:
-        logger.error('❌ El scraper falló')
+    try:
+        # Obtener placa pendiente de la API
+        plate_data = get_pending_plate()
+        
+        if not plate_data:
+            logger.error('❌ No se pudo obtener la placa de la API')
+            return
+        
+        plate_number = plate_data.get('plate')
+        plate_id = plate_data.get('id')
+        
+        if not plate_number:
+            logger.error('❌ La respuesta de la API no contiene una placa válida')
+            return
+        
+        logger.info(f'📋 Procesando:')
+        logger.info(f'   🆔 ID: {plate_id}')
+        logger.info(f'   🚙 Placa: {plate_number}')
+        
+        # Ejecutar scraper
+        success = scraper.run(
+            plate_number=plate_number,  # Placa obtenida de la API
+            plate_id=plate_id,          # ID de la placa para marcar como cargada
+            headless=True              # Modo headless (opcional, default: False)
+        )
+        
+        if success:
+            logger.info('✅ Scraper ejecutado exitosamente')
+        else:
+            logger.error('❌ El scraper falló')
+    finally:
+        # Garantizar cleanup si algo falla antes de run()
+        print('🧹 Limpiando recursos...')
+        print(scraper.driver)
+        if scraper.driver:
+            scraper.cleanup()
 
 
 if __name__ == '__main__':
