@@ -60,10 +60,21 @@ class ConsultaVehicularScraper:
         # Configurar viewport
         options.add_argument('--window-size=1250,750')
         
-        # Preferencias adicionales
+        # Optimizaciones de rendimiento - sin bloquear imágenes (necesarias para captcha)
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-software-rasterizer')
+        
+        # Estrategia de carga de página: 'eager' no espera recursos externos
+        options.page_load_strategy = 'eager'
+        
+        # Preferencias adicionales - bloquear solo recursos no críticos
         prefs = {
             'profile.default_content_setting_values.notifications': 2,
             'profile.default_content_settings.popups': 0,
+            'profile.managed_default_content_settings.stylesheets': 2,  # Bloquear CSS
+            'profile.managed_default_content_settings.fonts': 2,  # Bloquear fuentes
+            'profile.managed_default_content_settings.media_stream': 2,  # Bloquear media
         }
         options.add_experimental_option('prefs', prefs)
         
@@ -111,14 +122,14 @@ class ConsultaVehicularScraper:
             self.driver.get(self.url)
             
             # Esperar a que la aplicación Angular cargue
-            WebDriverWait(self.driver, 20).until(
+            WebDriverWait(self.driver, 15).until(
                 EC.presence_of_element_located((By.TAG_NAME, 'app-root'))
             )
             
             logger.info('✅ Página cargada exitosamente')
             
-            # Esperar un poco más para asegurar carga completa
-            time.sleep(2)
+            # Esperar solo lo mínimo necesario para la carga inicial
+            time.sleep(1)
             
             return True
         except Exception as e:
@@ -132,9 +143,9 @@ class ConsultaVehicularScraper:
             
             plate_input_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/form/fieldset/nz-form-item[1]/nz-form-control/div/div/nz-input-group/input'
             
-            # Esperar a que el input esté presente
-            plate_input = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, plate_input_xpath))
+            # Esperar a que el input esté presente y sea interactivo
+            plate_input = WebDriverWait(self.driver, 8).until(
+                EC.element_to_be_clickable((By.XPATH, plate_input_xpath))
             )
             
             # Limpiar el campo primero
@@ -160,7 +171,7 @@ class ConsultaVehicularScraper:
             captcha_img_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/form/fieldset/nz-form-item[2]/table/tr/td[1]/img'
             
             # Esperar a que la imagen esté presente
-            captcha_img = WebDriverWait(self.driver, 10).until(
+            captcha_img = WebDriverWait(self.driver, 8).until(
                 EC.presence_of_element_located((By.XPATH, captcha_img_xpath))
             )
             
@@ -271,8 +282,8 @@ class ConsultaVehicularScraper:
             
             captcha_input_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/form/fieldset/nz-form-item[2]/table/tr/td[3]/nz-form-item/nz-form-control/div/div/nz-input-group/input'
             
-            captcha_input = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, captcha_input_xpath))
+            captcha_input = WebDriverWait(self.driver, 8).until(
+                EC.element_to_be_clickable((By.XPATH, captcha_input_xpath))
             )
             
             captcha_input.clear()
@@ -324,7 +335,7 @@ class ConsultaVehicularScraper:
             
             button_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/form/fieldset/nz-form-item[3]/nz-form-control/div/div/div/button'
             
-            button = WebDriverWait(self.driver, 10).until(
+            button = WebDriverWait(self.driver, 8).until(
                 EC.element_to_be_clickable((By.XPATH, button_xpath))
             )
             
@@ -376,8 +387,8 @@ class ConsultaVehicularScraper:
             
             result_img_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/img'
             
-            # Esperar a que la imagen esté presente
-            result_img = WebDriverWait(self.driver, 15).until(
+            # Esperar a que la imagen esté presente con su atributo src
+            result_img = WebDriverWait(self.driver, 12).until(
                 EC.presence_of_element_located((By.XPATH, result_img_xpath))
             )
             

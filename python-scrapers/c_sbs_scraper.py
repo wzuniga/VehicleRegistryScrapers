@@ -42,10 +42,21 @@ class SBSScraper:
         # Configurar viewport
         options.add_argument('--window-size=1250,750')
         
-        # Preferencias adicionales
+        # Optimizaciones de rendimiento - sin bloquear imágenes necesarias
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-software-rasterizer')
+        
+        # Estrategia de carga de página: 'eager' no espera recursos externos
+        options.page_load_strategy = 'eager'
+        
+        # Preferencias adicionales - bloquear solo recursos no críticos
         prefs = {
             'profile.default_content_setting_values.notifications': 2,
             'profile.default_content_settings.popups': 0,
+            'profile.managed_default_content_settings.stylesheets': 2,  # Bloquear CSS
+            'profile.managed_default_content_settings.fonts': 2,  # Bloquear fuentes
+            'profile.managed_default_content_settings.media_stream': 2,  # Bloquear media
         }
         options.add_experimental_option('prefs', prefs)
         
@@ -100,7 +111,7 @@ class SBSScraper:
             logger.info('✅ Página cargada exitosamente')
             
             # Esperar un poco más para asegurar carga completa
-            time.sleep(3)
+            # time.sleep(3)
             
             return True
         except Exception as e:
@@ -125,7 +136,7 @@ class SBSScraper:
             # Escribir la placa con pequeñas pausas para simular escritura humana
             for char in plate:
                 plate_input.send_keys(char)
-                time.sleep(0.1)
+                # time.sleep(0.1)
             
             logger.info('✅ Número de placa ingresado correctamente')
             return True
@@ -150,7 +161,7 @@ class SBSScraper:
             radio_button.click()
             
             # Esperar un momento después del click
-            time.sleep(1)
+            # time.sleep(1)
             
             logger.info(f'✅ Radio button {index} seleccionado')
             return True
@@ -176,7 +187,7 @@ class SBSScraper:
             
             # Esperar a que procese la búsqueda
             logger.info('⏳ Esperando resultados...')
-            time.sleep(3)
+            # time.sleep(2)
             
             logger.info('✅ Submit realizado')
             return True
@@ -184,6 +195,37 @@ class SBSScraper:
         except Exception as e:
             logger.error(f'❌ Error haciendo click en botón de submit: {e}')
             return False
+    
+    def extract_table_data_optimized(self):
+        """Extrae tanto el valor como el HTML de la tabla en una sola búsqueda"""
+        try:
+            logger.info('📊 Extrayendo datos de la tabla...')
+            
+            # Primero verificar si existe el contenedor de tablas
+            container_xpath = '/html/body/div[4]/div/div/div/form/div[3]/div/div[3]/div/div/div/div'
+            
+            # Esperar a que el contenedor esté presente
+            container = WebDriverWait(self.driver, 1).until(
+                EC.presence_of_element_located((By.XPATH, container_xpath))
+            )
+            
+            # Extraer el valor de la primera tabla (header)
+            table_header_xpath = './/table[1]/thead/tr/th/span'
+            table_header = container.find_element(By.XPATH, table_header_xpath)
+            value = table_header.text.strip()
+            
+            # Extraer el HTML de la segunda tabla
+            table_xpath = './/table[2]'
+            table = container.find_element(By.XPATH, table_xpath)
+            table_html = table.get_attribute('outerHTML')
+            
+            logger.info(f'✅ Datos extraídos - Valor: {value}, HTML: {len(table_html)} caracteres')
+            return value, table_html
+            
+        except Exception as e:
+            logger.warning(f'⚠️ No se encontraron las tablas de resultados: {e}')
+            logger.info('📌 Usando valores por defecto: 0 y vacío')
+            return '0', ''
     
     def extract_table_data(self):
         """Extrae el valor de la tabla de resultados"""
@@ -193,7 +235,7 @@ class SBSScraper:
             table_header_xpath = '/html/body/div[4]/div/div/div/form/div[3]/div/div[3]/div/div/div/div/table[1]/thead/tr/th/span'
 
             # Esperar a que el elemento esté presente
-            table_header = WebDriverWait(self.driver, 10).until(
+            table_header = WebDriverWait(self.driver, 1).until(
                 EC.presence_of_element_located((By.XPATH, table_header_xpath))
             )
             
@@ -216,7 +258,7 @@ class SBSScraper:
             table_xpath = '/html/body/div[4]/div/div/div/form/div[3]/div/div[3]/div/div/div/div/table[2]'
             
             # Esperar a que la tabla esté presente
-            table = WebDriverWait(self.driver, 10).until(
+            table = WebDriverWait(self.driver, 1).until(
                 EC.presence_of_element_located((By.XPATH, table_xpath))
             )
             
@@ -240,7 +282,7 @@ class SBSScraper:
             self.driver.get(self.url)
             
             # Esperar a que la página cargue
-            time.sleep(2)
+            # time.sleep(1)
             
             logger.info('✅ Formulario reseteado')
             return True
@@ -293,7 +335,7 @@ class SBSScraper:
             
             # Verificar respuesta
             if response.status_code in [200, 201]:
-                logger.info(f'✅ Datos enviados exitosamente. Respuesta: {response.text}')
+                # logger.info(f'✅ Datos enviados exitosamente. Respuesta: {response.text}')
                 
                 # Marcar placa como cargada en la API
                 logger.info(f'📝 Marcando placa {plate_id} como cargada...')
@@ -381,9 +423,8 @@ class SBSScraper:
                     logger.warning(f'⚠️ No se pudo hacer submit en iteración {radio_index}')
                     continue
                 
-                # Extraer datos de la tabla
-                table_value = self.extract_table_data()
-                table_html = self.extract_table_html()
+                # Extraer datos de la tabla (optimizado: una sola búsqueda)
+                table_value, table_html = self.extract_table_data_optimized()
                 
                 field_name = field_mapping[radio_index]
                 results[field_name]['count'] = table_value
@@ -392,22 +433,22 @@ class SBSScraper:
                 logger.info(f'✅ {field_name} - Count: {table_value}, HTML: {len(table_html)} caracteres')
                 
                 # Tomar captura de pantalla
-                screenshot_name = f'sbs_{field_mapping[radio_index].lower()}.png'
-                self.take_screenshot(screenshot_name)
+                # screenshot_name = f'sbs_{field_mapping[radio_index].lower()}.png'
+                # self.take_screenshot(screenshot_name)
                 
                 # Esperar un momento antes de la siguiente iteración
-                time.sleep(2)
+                # time.sleep(2)
             
             # Guardar resultados en JSON
             logger.info('\n💾 Guardando resultados en JSON...')
             os.makedirs('sbs_scraper', exist_ok=True)
-            json_path = os.path.join('sbs_scraper', 'sbs_results.json')
+            # json_path = os.path.join('sbs_scraper', 'sbs_results.json')
             
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(results, f, ensure_ascii=False, indent=2)
+            # with open(json_path, 'w', encoding='utf-8') as f:
+            #     json.dump(results, f, ensure_ascii=False, indent=2)
             
-            logger.info(f'✅ Resultados guardados en {json_path}')
-            logger.info(f'📊 Resultados: {json.dumps(results, ensure_ascii=False, indent=2)}')
+            # logger.info(f'✅ Resultados guardados en {json_path}')
+            # logger.info(f'📊 Resultados: {json.dumps(results, ensure_ascii=False, indent=2)}')
             
             # Enviar resultados a la API
             if plate_id:
@@ -418,7 +459,7 @@ class SBSScraper:
             
             # Esperar el tiempo especificado
             logger.info(f'\n⏳ Esperando {wait_time} segundos...')
-            time.sleep(wait_time)
+            # time.sleep(wait_time)
             
             logger.info('\n🎉 Proceso completado exitosamente')
             return True
@@ -497,7 +538,7 @@ def main():
     success = scraper.run(
         plate_number=plate_number,  # Placa obtenida de la API
         plate_id=plate_id,          # ID de la placa para marcar como cargada
-        wait_time=5,                # Tiempo de espera al final (opcional, default: 100)
+        wait_time=0,                # Tiempo de espera al final (opcional, default: 100)
         headless=True               # Modo headless (opcional, default: False)
     )
     
