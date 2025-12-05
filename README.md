@@ -3,18 +3,30 @@
 Scraper de Python usando `undetected_chromedriver` para acceder a SUNARP sin ser detectado.
 
 ## Instalación
-
 1. Crear y activar un entorno virtual:
-```bash
-# Crear el entorno virtual
-python -m venv venv
 
-# Activar el entorno virtual (Windows PowerShell)
-.\venv\Scripts\Activate.ps1
+	 - En Windows (PowerShell):
 
-# O en Windows CMD
-venv\Scripts\activate.bat
-```
+		 ```powershell
+		 # Crear el entorno virtual
+		 python -m venv venv
+
+		 # Activar (PowerShell)
+		 .\venv\Scripts\Activate.ps1
+		 ```
+
+	 - En Windows (CMD):
+
+		 ```cmd
+		 venv\Scripts\activate.bat
+		 ```
+
+	 - En macOS / Linux (bash/zsh):
+
+		 ```bash
+		 python3 -m venv venv
+		 source venv/bin/activate
+		 ```
 
 2. Instalar las dependencias:
 ```bash
