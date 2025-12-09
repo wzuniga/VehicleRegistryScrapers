@@ -514,38 +514,58 @@ def main():
     logger.info('🚗 SBS SOAT Scraper - Python')
     logger.info('=' * 60)
     
-    scraper = SBSScraper()
-    
-    # Obtener placa pendiente de la API
-    plate_data = get_pending_plate()
-    
-    if not plate_data:
-        logger.error('❌ No se pudo obtener la placa de la API')
-        return
-    
-    plate_number = plate_data.get('plate')
-    plate_id = plate_data.get('id')
-    
-    if not plate_number:
-        logger.error('❌ La respuesta de la API no contiene una placa válida')
-        return
-    
-    logger.info(f'📋 Procesando:')
-    logger.info(f'   🆔 ID: {plate_id}')
-    logger.info(f'   🚙 Placa: {plate_number}')
-    
-    # Ejecutar scraper
-    success = scraper.run(
-        plate_number=plate_number,  # Placa obtenida de la API
-        plate_id=plate_id,          # ID de la placa para marcar como cargada
-        wait_time=0,                # Tiempo de espera al final (opcional, default: 100)
-        headless=True               # Modo headless (opcional, default: False)
-    )
-    
-    if success:
-        logger.info('✅ Scraper ejecutado exitosamente')
-    else:
-        logger.error('❌ El scraper falló')
+    while True:
+        try:
+            # Obtener placa pendiente de la API
+            plate_data = get_pending_plate()
+            
+            if not plate_data:
+                logger.info('⏳ No hay placas pendientes, esperando 2 segundos...')
+                time.sleep(2)
+                continue
+            
+            plate_number = plate_data.get('plate')
+            plate_id = plate_data.get('id')
+            
+            if not plate_number:
+                logger.error('❌ La respuesta de la API no contiene una placa válida')
+                time.sleep(2)
+                continue
+            
+            logger.info(f'📋 Procesando:')
+            logger.info(f'   🆔 ID: {plate_id}')
+            logger.info(f'   🚙 Placa: {plate_number}')
+            
+            # Crear nueva instancia del scraper para cada placa
+            scraper = SBSScraper()
+            
+            try:
+                # Ejecutar scraper
+                success = scraper.run(
+                    plate_number=plate_number,  # Placa obtenida de la API
+                    plate_id=plate_id,          # ID de la placa para marcar como cargada
+                    wait_time=0,                # Tiempo de espera al final (opcional, default: 100)
+                    headless=True               # Modo headless (opcional, default: False)
+                )
+                
+                if success:
+                    logger.info('✅ Scraper ejecutado exitosamente')
+                else:
+                    logger.error('❌ El scraper falló')
+            finally:
+                # Asegurar que el navegador se cierre siempre
+                scraper.cleanup()
+            
+            # Pequeña pausa entre procesamiento de placas
+            time.sleep(1)
+            
+        except KeyboardInterrupt:
+            logger.info('\n🛑 Proceso interrumpido por el usuario')
+            break
+        except Exception as e:
+            logger.error(f'❌ Error inesperado en el ciclo principal: {e}')
+            time.sleep(2)
+            continue
 
 
 if __name__ == '__main__':

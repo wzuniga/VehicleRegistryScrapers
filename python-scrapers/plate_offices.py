@@ -10,25 +10,25 @@ PLATE_TO_OFFICE = {
     "D": "LIMA",
     "E": "LIMA", # No definido
     "F": "LIMA",
-    "G": "LIMA", # No definido
-    "H": "Ancash",
-    "I": "Ayacucho",
-    "J": "LIMA",
-    "K": "LIMA",
-    "L": "Loreto",
-    "M": "LIMA",
-    "N": "LIMA",
-    "O": "LIMA",
-    "P": "LIMA",
-    "Q": "LIMA",
-    "R": "LIMA",
-    "S": "LIMA",
-    "T": "LIMA",
-    "U": "Ucayali",
+    # "G": "LIMA", # No definido
+    # "H": "Ancash",
+    "I": "AYACUCHO",
+    # "J": "LIMA",
+    # "K": ["Lambayeque", "Cajamarca", "Amazonas"],
+    # "L": "Loreto",
+    # "M": ["Lambayeque", "Cajamarca", "Amazonas"],
+    # "N": "LIMA",
+    # "O": "LIMA",
+    # "P": ["Tumbes", "Piura"],
+    # "Q": "LIMA",
+    # "R": "LIMA",
+    # "S": "LIMA",
+    "T": "TRUJILLO",
+    # "U": "Ucayali",
     "V": "AREQUIPA",
-    "W": "AREQUIPA",
+    # "W": "AREQUIPA",
     "X": "CUSCO",
-    "Y": "TRUJILLO",
+    # "Y": "TRUJILLO",
     "Z": "TACNA"
 }
 
@@ -41,13 +41,13 @@ def get_office_by_plate(plate_number):
         plate_number (str): Número de placa vehicular
         
     Returns:
-        str: Nombre de la oficina registral o None si no se encuentra
+        str: Nombre de la oficina registral o False si no se encuentra
     """
     if not plate_number:
-        return None
+        return False
     
     first_letter = plate_number[0].upper()
-    return PLATE_TO_OFFICE.get(first_letter, "LIMA")  # Default: LIMA
+    return PLATE_TO_OFFICE.get(first_letter, False)  # Retorna False si no existe
 
 def list_all_mappings():
     """

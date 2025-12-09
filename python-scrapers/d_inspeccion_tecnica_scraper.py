@@ -112,33 +112,7 @@ class InspeccionTecnicaScraper:
         except Exception as e:
             logger.error(f'❌ Error navegando a la página: {e}')
             return False
-    
-    def fill_plate_number(self, plate):
-        """Llena el campo de número de placa"""
-        try:
-            logger.info(f'🚙 Llenando número de placa: {plate}')
-            
-            plate_input_xpath = '/html/body/div[2]/div[2]/div[2]/div/input'
-            
-            # Esperar a que el input esté presente
-            plate_input = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, plate_input_xpath))
-            )
-            
-            # Limpiar el campo primero
-            plate_input.clear()
-            
-            # Escribir la placa con pequeñas pausas para simular escritura humana
-            for char in plate:
-                plate_input.send_keys(char)
-                time.sleep(0.1)
-            
-            logger.info('✅ Número de placa ingresado correctamente')
-            return True
-            
-        except Exception as e:
-            logger.error(f'❌ Error llenando número de placa: {e}')
-            return False
+
     
     def get_captcha_image(self):
         """Obtiene la imagen del captcha y la guarda"""
@@ -186,7 +160,8 @@ class InspeccionTecnicaScraper:
             logger.info('📤 Enviando captcha a DeathByCaptcha...')
             
             # Enviar captcha para resolución (deathbycaptcha espera la ruta del archivo)
-            captcha = client.decode(image_path)
+            # verbose=0 para suprimir logs de deathbycaptcha
+            captcha = client.decode(image_path, type=0, verbose=0)
             
             if captcha:
                 result = captcha.get('text', '')
@@ -200,28 +175,133 @@ class InspeccionTecnicaScraper:
             logger.error(f'❌ Error parseando captcha: {e}')
             return None
     
-    def fill_captcha_input(self, captcha_text):
-        """Llena el input del captcha con el texto parseado"""
+    def get_session_cookie(self):
+        """Extrae la cookie ASP.NET_SessionId del navegador"""
         try:
-            logger.info(f'📝 Llenando captcha: {captcha_text}')
+            logger.info('🍪 Obteniendo cookie ASP.NET_SessionId...')
             
-            captcha_input_xpath = '/html/body/div[2]/div[2]/div[4]/div/div/input'
+            # Obtener todas las cookies
+            cookies = self.driver.get_cookies()
             
-            captcha_input = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, captcha_input_xpath))
-            )
+            # Buscar la cookie ASP.NET_SessionId
+            for cookie in cookies:
+                if cookie['name'] == 'ASP.NET_SessionId':
+                    session_id = cookie['value']
+                    logger.info(f'✅ Cookie obtenida: {session_id}')
+                    return session_id
             
-            captcha_input.clear()
-            captcha_input.send_keys(captcha_text)
-            
-            logger.info('✅ Captcha llenado correctamente')
-            return True
+            logger.error('❌ No se encontró la cookie ASP.NET_SessionId')
+            return None
             
         except Exception as e:
-            logger.error(f'❌ Error llenando captcha: {e}')
+            logger.error(f'❌ Error obteniendo cookie: {e}')
+            return None
+    
+    def query_citv_data(self, plate_number, captcha_text, session_cookie):
+        """Consulta los datos de CITV usando el endpoint con la cookie de sesión"""
+        try:
+            logger.info('🔍 Consultando datos de CITV...')
+            
+            # Construir la URL con los parámetros
+            url = f'https://rec.mtc.gob.pe/CITV/JrCITVConsultarFiltro?pArrParametros=1%7C{plate_number}%7C%7C{captcha_text}'
+            
+            # Headers para la petición
+            headers = {
+                'accept': '*/*',
+                'accept-language': 'en-US,en;q=0.6',
+                'content-type': 'application/json',
+                'priority': 'u=1, i',
+                'referer': 'https://rec.mtc.gob.pe/Citv/ArConsultaCitv',
+                'sec-ch-ua': '"Chromium";v="142", "Brave";v="142", "Not_A Brand";v="99"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'sec-gpc': '1',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+                'Cookie': f'ASP.NET_SessionId={session_cookie}'
+            }
+            
+            logger.info(f'📊 URL: {url}')
+            logger.info(f'🍪 Cookie: ASP.NET_SessionId={session_cookie}')
+            
+            # Hacer la petición GET
+            response = requests.get(url, headers=headers, timeout=30)
+            
+            # Verificar respuesta
+            if response.status_code == 200:
+                logger.info(f'✅ Respuesta recibida ({response.status_code})')
+                
+                try:
+                    data = response.json()
+                    logger.info(f'📄 Datos obtenidos: {json.dumps(data, ensure_ascii=False, indent=2)}')
+                    
+                    # Verificar si el código de error es -2 (captcha inválido)
+                    if isinstance(data, dict) and data.get('orCodigo') == -2:
+                        logger.warning('⚠️ Código de error -2: Captcha inválido, se requiere reinicialización')
+                        return None
+                    
+                    return data
+                except json.JSONDecodeError:
+                    logger.warning('⚠️ La respuesta no es JSON válido')
+                    logger.info(f'📄 Respuesta raw: {response.text}')
+                    return {'raw_response': response.text}
+            else:
+                logger.error(f'❌ Error en la petición. Status: {response.status_code}')
+                logger.error(f'📄 Respuesta: {response.text}')
+                logger.warning('⚠️ El captcha/cookie probablemente expiraron, se requiere reinicialización')
+                return None
+                
+        except Exception as e:
+            logger.error(f'❌ Error consultando CITV: {e}')
+            return None
+    
+    def send_to_api(self, plate_number, citv_data, plate_id):
+        """Envía los datos de CITV al endpoint de inspección vehicular"""
+        try:
+            logger.info('📤 Enviando datos a la API...')
+            
+            # URL del endpoint
+            api_url = 'http://143.110.206.161:3000/inspeccion-vehicular'
+            
+            # Payload
+            payload = {
+                'plateNumber': plate_number,
+                'data': citv_data
+            }
+            
+            # Headers
+            headers = {
+                'accept': '*/*',
+                'Content-Type': 'application/json'
+            }
+            
+            logger.info(f'📊 Enviando datos para placa: {plate_number}')
+            
+            # Enviar request POST
+            response = requests.post(api_url, json=payload, headers=headers, timeout=60)
+            
+            # Verificar respuesta
+            if response.status_code in [200, 201]:
+                logger.info(f'✅ Datos enviados exitosamente')
+                
+                # Marcar placa como cargada en la API
+                logger.info(f'📝 Marcando placa {plate_id} como cargada...')
+                mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/D'
+                mark_response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
+                mark_response.raise_for_status()
+                logger.info(f'✅ Placa {plate_id} marcada como cargada')
+                
+                return True
+            else:
+                logger.error(f'❌ Error al enviar datos. Status: {response.status_code}, Respuesta: {response.text}')
+                return False
+                
+        except Exception as e:
+            logger.error(f'❌ Error enviando datos a la API: {e}')
             return False
     
-    def click_search_button(self):
         """Hace click en el botón de búsqueda"""
         try:
             logger.info('🔍 Haciendo click en botón de búsqueda...')
@@ -255,58 +335,61 @@ class InspeccionTecnicaScraper:
             logger.error(f'❌ Error tomando captura: {e}')
             return False
     
-    def run(self, plate_number=None, plate_id=None, headless=False):
-        """Ejecuta el scraper completo"""
+    def initialize(self, headless=False):
+        """Inicializa el navegador y obtiene captcha/cookie (solo una vez)"""
         try:
-            # Validar parámetros requeridos
-            if not plate_number:
-                logger.error('❌ Error: Falta el parámetro obligatorio "plate_number" (número de placa)')
-                logger.error('   Ejemplo: scraper.run(plate_number="BNP276")')
-                return False
-            
-            logger.info(f'📋 Parámetros recibidos:')
-            logger.info(f'   🚙 Placa: {plate_number}')
-            logger.info(f'   👁️ Headless: {headless}')
-            
             # Configurar driver
             if not self.setup_driver(headless=headless):
-                return False
+                return False, None, None
             
             # Navegar a la página
             if not self.navigate_to_page():
-                return False
-            
-            # Llenar número de placa
-            if not self.fill_plate_number(plate_number):
-                return False
+                return False, None, None
             
             # Obtener imagen del captcha
             if not self.get_captcha_image():
-                return False
+                return False, None, None
             
             # Parsear captcha con DeathByCaptcha
             captcha_text = self.parse_captcha_with_dbc('inspeccion_tecnica/captcha.png')
             if not captcha_text:
                 logger.error('❌ No se pudo parsear el captcha')
+                return False, None, None
+            
+            # Obtener cookie de sesión
+            session_cookie = self.get_session_cookie()
+            if not session_cookie:
+                logger.error('❌ No se pudo obtener la cookie de sesión')
+                return False, None, None
+            
+            logger.info('✅ Inicialización completada exitosamente')
+            return True, captcha_text, session_cookie
+            
+        except Exception as e:
+            logger.error(f'❌ Error en la inicialización: {e}')
+            return False, None, None
+    
+    def process_plate(self, plate_number, plate_id, captcha_text, session_cookie):
+        """Procesa una placa individual usando captcha y cookie existentes"""
+        try:
+            logger.info(f'📋 Procesando placa: {plate_number}')
+            
+            # Consultar datos de CITV
+            citv_data = self.query_citv_data(plate_number, captcha_text, session_cookie)
+            if not citv_data:
+                logger.error('❌ No se pudieron obtener los datos de CITV')
                 return False
             
-            # Llenar el input del captcha
-            if not self.fill_captcha_input(captcha_text):
+            # Enviar datos a la API
+            if not self.send_to_api(plate_number, citv_data, plate_id):
+                logger.warning('⚠️ No se pudieron enviar los datos a la API')
                 return False
             
-            # Hacer click en el botón de búsqueda
-            if not self.click_search_button():
-                return False
-            
-            # Tomar captura de pantalla final
-            self.take_screenshot('inspeccion_tecnica_result.png')
-            
-            logger.info('✅ Proceso completado exitosamente')
-            logger.info('🎉 Proceso completado exitosamente')
+            logger.info('✅ Placa procesada exitosamente')
             return True
             
         except Exception as e:
-            logger.error(f'❌ Error en el proceso: {e}')
+            logger.error(f'❌ Error procesando placa: {e}')
             return False
     
     def cleanup(self):
@@ -356,36 +439,84 @@ def main():
     logger.info('=' * 60)
     
     scraper = InspeccionTecnicaScraper()
+    captcha_text = None
+    session_cookie = None
+    needs_initialization = True
+    reinitialization_count = 0
+    MAX_REINITIALIZATIONS = 10
     
-    # Obtener placa pendiente de la API
-    plate_data = get_pending_plate()
-    
-    if not plate_data:
-        logger.error('❌ No se pudo obtener la placa de la API')
-        return
-    
-    plate_number = plate_data.get('plate')
-    plate_id = plate_data.get('id')
-    
-    if not plate_number:
-        logger.error('❌ La respuesta de la API no contiene una placa válida')
-        return
-    
-    logger.info(f'📋 Procesando:')
-    logger.info(f'   🆔 ID: {plate_id}')
-    logger.info(f'   🚙 Placa: {plate_number}')
-    
-    # Ejecutar scraper
-    success = scraper.run(
-        plate_number=plate_number,  # Placa obtenida de la API
-        plate_id=plate_id,          # ID de la placa para marcar como cargada
-        headless=False               # Modo headless (opcional, default: False)
-    )
-    
-    if success:
-        logger.info('✅ Scraper ejecutado exitosamente')
-    else:
-        logger.error('❌ El scraper falló')
+    try:
+        while True:
+            try:
+                # Inicializar o reinicializar si es necesario
+                if needs_initialization:
+                    # Verificar límite de reinicializaciones
+                    if reinitialization_count >= MAX_REINITIALIZATIONS:
+                        logger.error(f'❌ Se alcanzó el máximo de {MAX_REINITIALIZATIONS} reinicializaciones. Terminando script.')
+                        break
+                    
+                    reinitialization_count += 1
+                    logger.info(f'🔄 Inicializando navegador y obteniendo captcha/cookie... (Intento {reinitialization_count}/{MAX_REINITIALIZATIONS})')
+                    success, captcha_text, session_cookie = scraper.initialize(headless=True)
+                    
+                    if not success:
+                        logger.error('❌ Fallo en la inicialización, reintentando en 5 segundos...')
+                        time.sleep(5)
+                        continue
+                    
+                    needs_initialization = False
+                    logger.info('✅ Listo para procesar placas')
+                
+                # Obtener placa pendiente de la API
+                plate_data = get_pending_plate()
+                
+                if not plate_data:
+                    logger.info('⏳ No hay placas pendientes, esperando 2 segundos...')
+                    time.sleep(2)
+                    continue
+                
+                plate_number = plate_data.get('plate')
+                plate_id = plate_data.get('id')
+                
+                if not plate_number:
+                    logger.error('❌ La respuesta de la API no contiene una placa válida')
+                    time.sleep(2)
+                    continue
+                
+                logger.info(f'\n📋 Procesando:')
+                logger.info(f'   🆔 ID: {plate_id}')
+                logger.info(f'   🚙 Placa: {plate_number}')
+                
+                # Procesar placa usando captcha y cookie existentes
+                success = scraper.process_plate(plate_number, plate_id, captcha_text, session_cookie)
+                
+                if success:
+                    logger.info('✅ Placa procesada exitosamente')
+                    # Resetear contador de reinicializaciones en caso de éxito
+                    reinitialization_count = 0
+                else:
+                    logger.warning('⚠️ Fallo al procesar placa, reinicializando...')
+                    needs_initialization = True
+                    scraper.cleanup()
+                    scraper = InspeccionTecnicaScraper()
+                
+                # Pequeña pausa entre procesamiento de placas
+                time.sleep(0.5)
+                
+            except KeyboardInterrupt:
+                logger.info('\n🛑 Proceso interrumpido por el usuario')
+                break
+            except Exception as e:
+                logger.error(f'❌ Error inesperado en el ciclo: {e}')
+                needs_initialization = True
+                scraper.cleanup()
+                scraper = InspeccionTecnicaScraper()
+                time.sleep(2)
+                
+    finally:
+        # Limpieza final
+        scraper.cleanup()
+        logger.info('👋 Scraper finalizado')
 
 
 if __name__ == '__main__':

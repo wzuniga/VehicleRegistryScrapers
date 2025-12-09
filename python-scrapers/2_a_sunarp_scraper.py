@@ -339,7 +339,7 @@ class SunarpScraper:
             
             if office_found:
                 logger.info(f'✅ {office_name} seleccionado correctamente')
-                time.sleep(1)
+                # time.sleep(1)
                 return True
             else:
                 logger.error(f'❌ No se encontró la opción {office_name}')
@@ -475,7 +475,7 @@ class SunarpScraper:
         """Hace click en el botón de la tabla de resultados después de 5 segundos"""
         try:
             logger.info('⏳ Esperando 5 segundos antes de hacer click en la tabla...')
-            time.sleep(5)
+            # time.sleep(5)
             
             logger.info('📊 Haciendo click en botón de la tabla...')
             
@@ -821,24 +821,10 @@ class SunarpScraper:
             logger.error(f'❌ Error enviando datos a la API: {e}')
             return False
     
-    def run(self, office_name=None, plate_number=None, plate_id=None, wait_time=100, headless=False):
-        """Ejecuta el scraper completo"""
+    def login(self, headless=False):
+        """Realiza el proceso de login en SUNARP"""
         try:
-            # Validar parámetros requeridos
-            if not office_name:
-                logger.error('❌ Error: Falta el parámetro obligatorio "office_name" (nombre de la oficina registral)')
-                logger.error('   Ejemplo: scraper.run(office_name="LIMA", plate_number="BNP276")')
-                return False
-            
-            if not plate_number:
-                logger.error('❌ Error: Falta el parámetro obligatorio "plate_number" (número de placa)')
-                logger.error('   Ejemplo: scraper.run(office_name="LIMA", plate_number="BNP276")')
-                return False
-            
-            logger.info(f'📋 Parámetros recibidos:')
-            logger.info(f'   🏢 Oficina: {office_name}')
-            logger.info(f'   🚙 Placa: {plate_number}')
-            logger.info(f'   👁️ Headless: {headless}')
+            logger.info('🔐 Iniciando proceso de login...')
             
             # Configurar driver
             if not self.setup_driver(headless=headless):
@@ -871,6 +857,77 @@ class SunarpScraper:
             logger.info('⏳ Esperando a que cargue la página principal...')
             time.sleep(5)
             
+            logger.info('✅ Login completado exitosamente')
+            return True
+            
+        except Exception as e:
+            logger.error(f'❌ Error en el login: {e}')
+            return False
+    
+    def close_previous_modals(self):
+        """Cierra modales anteriores antes de procesar una nueva placa"""
+        try:
+            logger.info('🔄 Recargando página...')
+            
+            # Por ahora solo recarga la página
+            self.driver.refresh()
+            
+            # Esperar a que la página cargue completamente
+            time.sleep(3)
+            
+            logger.info('✅ Página recargada correctamente')
+            return True
+            
+            # # Botón 1: Cerrar modal principal
+            # try:
+            #     button1_xpath = '/html/body/div/div[3]/div[2]/div/div[2]/div/div/div[1]/button'
+            #     button1 = WebDriverWait(self.driver, 3).until(
+            #         EC.element_to_be_clickable((By.XPATH, button1_xpath))
+            #     )
+            #     button1.click()
+            #     logger.info('✅ Modal principal cerrado')
+            #     time.sleep(0.5)
+            # except:
+            #     logger.debug('ℹ️ Primer botón no encontrado (puede estar ya cerrado)')
+            
+            # # Botón 2: Cerrar modal secundario
+            # try:
+            #     button2_xpath = '/html/body/div/div[2]/div/nz-modal-container/div/div/button'
+            #     button2 = WebDriverWait(self.driver, 3).until(
+            #         EC.element_to_be_clickable((By.XPATH, button2_xpath))
+            #     )
+            #     button2.click()
+            #     logger.info('✅ Modal secundario cerrado')
+            #     time.sleep(0.5)
+            # except:
+            #     logger.debug('ℹ️ Segundo botón no encontrado (puede estar ya cerrado)')
+            
+            # # Botón 3: Limpiar búsqueda
+            # try:
+            #     button3_xpath = '/html/body/app-root/app-main/nz-layout/nz-layout/nz-content/app-partidas-base-grafica-registral/div/div[2]/div/div/nz-spin/div/div[1]/span[2]/nz-card/div/div[8]/div[2]/app-button/div/div/button'
+            #     button3 = WebDriverWait(self.driver, 3).until(
+            #         EC.element_to_be_clickable((By.XPATH, button3_xpath))
+            #     )
+            #     button3.click()
+            #     logger.info('✅ Búsqueda limpiada')
+            #     time.sleep(1)
+            # except:
+            #     logger.debug('ℹ️ Tercer botón no encontrado (puede estar ya limpio)')
+            
+            # logger.info('✅ Modales cerrados correctamente')
+            # return True
+            
+        except Exception as e:
+            logger.warning(f'⚠️ Error recargando página: {e}')
+            return False
+    
+    def process_plate(self, office_name, plate_number, plate_id):
+        """Procesa una placa específica"""
+        try:
+            logger.info(f'📋 Procesando placa:')
+            logger.info(f'   🏢 Oficina: {office_name}')
+            logger.info(f'   🚙 Placa: {plate_number}')
+            
             # Seleccionar oficina (parámetro dinámico)
             if not self.select_office(office_name):
                 return False
@@ -899,23 +956,12 @@ class SunarpScraper:
             if not self.iterate_modal_table(plate_id, plate_number):
                 return False
             
-            # Tomar captura de pantalla después de procesar la tabla
-            self.take_screenshot('sunarp_despues_iteracion.png')
-            
-            # Esperar el tiempo especificado
-            logger.info(f'⏳ Esperando {wait_time} segundos...')
-            for i in range(wait_time):
-                time.sleep(1)
-                logger.info(f'   Esperando... {i + 1}/{wait_time} segundos')
-            
-            logger.info('🎉 Proceso completado exitosamente')
+            logger.info('✅ Placa procesada exitosamente')
             return True
             
         except Exception as e:
-            logger.error(f'❌ Error en el proceso: {e}')
+            logger.error(f'❌ Error procesando placa: {e}')
             return False
-        # finally:
-        #     self.cleanup()  # Comentado para no cerrar el navegador
     
     def cleanup(self):
         """Limpia recursos y cierra el navegador"""
@@ -979,63 +1025,86 @@ def main():
     logger.info('🚗 SUNARP Scraper - Python')
     logger.info('=' * 60)
     
-    while True:
-        try:
-            # Obtener placa pendiente de la API
-            plate_data = get_pending_plate()
-            
-            if not plate_data:
-                logger.info('⏳ No hay placas pendientes, esperando 2 segundos...')
-                time.sleep(2)
-                continue
-            
-            plate_number = plate_data.get('plate')
-            plate_id = plate_data.get('id')
-            
-            if not plate_number:
-                logger.error('❌ La respuesta de la API no contiene una placa válida')
-                time.sleep(2)
-                continue
-            
-            # Obtener la oficina registral basándose en la primera letra de la placa
-            office_name = get_office_by_plate(plate_number)
-            
-            logger.info(f'📋 Procesando:')
-            logger.info(f'   🆔 ID: {plate_id}')
-            logger.info(f'   🚙 Placa: {plate_number}')
-            logger.info(f'   🏢 Oficina detectada: {office_name}')
-            
-            # Crear nueva instancia del scraper para cada placa
-            scraper = SunarpScraper()
-            
+    scraper = SunarpScraper()
+    needs_login = True
+    
+    try:
+        while True:
             try:
-                # Ejecutar scraper
-                success = scraper.run(
-                    office_name=office_name,  # Oficina detectada automáticamente
-                    plate_number=plate_number,  # Placa obtenida de la API
-                    plate_id=plate_id,  # ID de la placa para marcar como cargada
-                    wait_time=5,           # Tiempo de espera al final (opcional, default: 100)
-                    headless=False            # Modo headless (opcional, default: False)
-                )
+                # Hacer login si es necesario
+                if needs_login:
+                    logger.info('🔄 Iniciando sesión en SUNARP...')
+                    success = scraper.login(headless=False)
+                    
+                    if not success:
+                        logger.error('❌ Fallo en el login, reintentando en 5 segundos...')
+                        scraper.cleanup()
+                        scraper = SunarpScraper()
+                        time.sleep(5)
+                        continue
+                    
+                    needs_login = False
+                    logger.info('✅ Sesión iniciada correctamente')
+                else:
+                    # Si no necesita login, cerrar modales previos
+                    scraper.close_previous_modals()
+                
+                # Obtener placa pendiente de la API
+                plate_data = get_pending_plate()
+                
+                if not plate_data:
+                    logger.info('⏳ No hay placas pendientes, esperando 2 segundos...')
+                    time.sleep(2)
+                    continue
+                
+                plate_number = plate_data.get('plate')
+                plate_id = plate_data.get('id')
+                
+                if not plate_number:
+                    logger.error('❌ La respuesta de la API no contiene una placa válida')
+                    time.sleep(2)
+                    continue
+                
+                # Obtener la oficina registral basándose en la primera letra de la placa
+                office_name = get_office_by_plate(plate_number)
+                
+                if office_name == False:
+                    logger.warning(f'⚠️ No se encontró oficina para la placa {plate_number}, marcando como cargada y pidiendo otra...')
+                    continue
+                
+                logger.info(f'\n📋 Procesando:')
+                logger.info(f'   🆔 ID: {plate_id}')
+                logger.info(f'   🚙 Placa: {plate_number}')
+                logger.info(f'   🏢 Oficina detectada: {office_name}')
+                
+                # Procesar placa usando sesión existente
+                success = scraper.process_plate(office_name, plate_number, plate_id)
                 
                 if success:
-                    logger.info('✅ Scraper ejecutado exitosamente')
+                    logger.info('✅ Placa procesada exitosamente')
                 else:
-                    logger.error('❌ El scraper falló')
-            finally:
-                # Asegurar que el navegador se cierre siempre
+                    logger.warning('⚠️ Fallo al procesar placa, reiniciando sesión...')
+                    needs_login = True
+                    scraper.cleanup()
+                    scraper = SunarpScraper()
+                
+                # Pequeña pausa entre procesamiento de placas
+                time.sleep(0.5)
+                
+            except KeyboardInterrupt:
+                logger.info('\n🛑 Proceso interrumpido por el usuario')
+                break
+            except Exception as e:
+                logger.error(f'❌ Error inesperado en el ciclo: {e}')
+                needs_login = True
                 scraper.cleanup()
-            
-            # Pequeña pausa entre procesamiento de placas
-            time.sleep(1)
-            
-        except KeyboardInterrupt:
-            logger.info('\n🛑 Proceso interrumpido por el usuario')
-            break
-        except Exception as e:
-            logger.error(f'❌ Error inesperado en el ciclo principal: {e}')
-            time.sleep(2)
-            continue
+                scraper = SunarpScraper()
+                time.sleep(2)
+                
+    finally:
+        # Limpieza final
+        scraper.cleanup()
+        logger.info('👋 Scraper finalizado')
 
 
 if __name__ == '__main__':
