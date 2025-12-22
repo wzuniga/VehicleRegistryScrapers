@@ -42,58 +42,111 @@ class ConsultaVehicularScraper:
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--no-sandbox')
         
-        # Modo headless configurable
+        # User agent realista
+        # options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
+        
+        # Modo headless configurable con opciones anti-detección adicionales
         if headless:
-            options.add_argument('--headless=new')
-            logger.info('🔇 Modo headless activado')
+            options.add_argument("--headless=new")
+            # Opciones adicionales para evitar detección de headless
+            options.add_argument('--disable-background-timer-throttling')
+            options.add_argument('--disable-backgrounding-occluded-windows')
+            options.add_argument('--disable-renderer-backgrounding')
+            logger.info('🔇 Modo headless activado con anti-detección')
         else:
             logger.info('👁️ Modo headless desactivado (navegador visible)')
         
-        # Configurar viewport
-        options.add_argument('--window-size=1250,750')
+        # Configurar viewport realista
+        options.add_argument('--window-size=1920,1080')
         
-        # Optimizaciones de rendimiento - sin bloquear imágenes (necesarias para captcha)
+        # Optimizaciones de rendimiento - mantener GPU para WebGL
         options.add_argument('--disable-extensions')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--disable-software-rasterizer')
+        # NO deshabilitar GPU - necesario para WebGL
+        # options.add_argument('--disable-gpu')
         
         # Estrategia de carga de página: 'eager' no espera recursos externos
         options.page_load_strategy = 'eager'
         
-        # Preferencias adicionales - bloquear solo recursos no críticos
+        # Preferencias adicionales - mínimo bloqueo para evitar detección
         prefs = {
             'profile.default_content_setting_values.notifications': 2,
             'profile.default_content_settings.popups': 0,
-            'profile.managed_default_content_settings.stylesheets': 2,  # Bloquear CSS
-            'profile.managed_default_content_settings.fonts': 2,  # Bloquear fuentes
-            'profile.managed_default_content_settings.media_stream': 2,  # Bloquear media
         }
         options.add_experimental_option('prefs', prefs)
         
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
             # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=143)
+            # use_subprocess=True ayuda a evitar problemas de patching
+            self.driver = uc.Chrome(options=options, version_main=143, use_subprocess=True)
             logger.info('✅ Chrome driver configurado exitosamente')
             
             # Ejecutar scripts anti-detección adicionales
             try:
                 self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
                     'source': '''
+                        // Eliminar completamente webdriver
+                        delete Object.getPrototypeOf(navigator).webdriver;
                         Object.defineProperty(navigator, 'webdriver', {
-                            get: () => undefined
+                            get: () => undefined,
+                            configurable: true
                         });
                         
+                        // Languages
                         Object.defineProperty(navigator, 'languages', {
                             get: () => ['es-ES', 'es', 'en-US', 'en']
                         });
                         
+                        // Fix plugins - crear PluginArray real
+                        const originalPlugins = navigator.plugins;
                         Object.defineProperty(navigator, 'plugins', {
-                            get: () => [1, 2, 3, 4, 5]
+                            get: () => {
+                                const pluginArray = Object.create(PluginArray.prototype);
+                                pluginArray.length = 5;
+                                return pluginArray;
+                            }
                         });
                         
+                        // Ocultar propiedades de headless
+                        Object.defineProperty(navigator, 'maxTouchPoints', {
+                            get: () => 1
+                        });
+                        
+                        Object.defineProperty(navigator, 'platform', {
+                            get: () => 'Win32'
+                        });
+                        
+                        // Simular Chrome real
                         window.chrome = {
-                            runtime: {}
+                            runtime: {},
+                            loadTimes: function() {},
+                            csi: function() {},
+                            app: {}
+                        };
+                        
+                        // Fix permissions - simular granted
+                        const originalQuery = window.navigator.permissions.query;
+                        window.navigator.permissions.query = (parameters) => (
+                            parameters.name === 'notifications' ?
+                                Promise.resolve({ state: Notification.permission }) :
+                                originalQuery(parameters)
+                        );
+                        
+                        // Fix Image dimensions
+                        const originalCreateElement = document.createElement;
+                        document.createElement = function(tag) {
+                            const element = originalCreateElement.call(document, tag);
+                            if (tag === 'img') {
+                                Object.defineProperty(element, 'width', {
+                                    get: function() { return this.naturalWidth || 0; },
+                                    configurable: true
+                                });
+                                Object.defineProperty(element, 'height', {
+                                    get: function() { return this.naturalHeight || 0; },
+                                    configurable: true
+                                });
+                            }
+                            return element;
                         };
                     '''
                 })
@@ -183,6 +236,9 @@ class ConsultaVehicularScraper:
     def get_result_image_base64(self):
         """Obtiene el base64 de la imagen del resultado directamente del atributo src"""
         try:
+            # Tomar screenshot antes de obtener la imagen
+            self.take_screenshot('before_result_extraction.png')
+            
             logger.info('🖼️ Obteniendo imagen del resultado en base64...')
             
             result_img_xpath = '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content/div/nz-card/div/app-form-datos-consulta/div/img'
@@ -269,9 +325,35 @@ class ConsultaVehicularScraper:
             logger.error(f'❌ Error tomando captura: {e}')
             return False
     
-    def run(self, plate_number=None, plate_id=None, headless=False):
+    def run(self, plate_number=None, plate_id=None, headless=False, test=False):
         """Ejecuta el scraper completo"""
         try:
+            # Modo test: probar detección de bots
+            if test:
+                logger.info('🧪 Modo TEST activado - Probando detección de bots')
+                
+                # Configurar driver
+                if not self.setup_driver(headless=headless):
+                    return False
+                
+                # Navegar a página de prueba
+                logger.info('🌐 Navegando a https://bot.sannysoft.com/...')
+                self.driver.get('https://bot.sannysoft.com/')
+                
+                # Esperar a que cargue completamente
+                logger.info('⏳ Esperando 10 segundos para análisis completo...')
+                time.sleep(10)
+                
+                # Tomar screenshot
+                if headless:
+                    self.take_screenshot('bot_detection_test.png')
+
+                logger.info('✅ Test completado. Revisa la captura bot_detection_test.png')
+                logger.info('📊 Resultados: Verifica en la imagen si aparece como bot detectado')
+                
+                return True
+            
+            # Flujo normal del scraper
             # Validar parámetros requeridos
             if not plate_number:
                 logger.error('❌ Error: Falta el parámetro obligatorio "plate_number" (número de placa)')
@@ -404,7 +486,8 @@ def main():
                 success = scraper.run(
                     plate_number=plate_number,  # Placa obtenida de la API
                     plate_id=plate_id,          # ID de la placa para marcar como cargada
-                    headless=True              # Modo headless (opcional, default: False)
+                    headless=True,              # Modo headless (opcional, default: False)
+                    test=False
                 )
                 
                 if success:
