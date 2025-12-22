@@ -78,7 +78,7 @@ class SunarpScraper:
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
             # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=141)
+            self.driver = uc.Chrome(options=options, version_main=143)
             logger.info('✅ Chrome driver configurado exitosamente')
             
             # Ejecutar scripts anti-detección adicionales
@@ -548,7 +548,7 @@ class SunarpScraper:
                         logger.info(f'   ✅ Click realizado en fila {index + 1}')
                         
                         # Esperar a que aparezca el modal
-                        time.sleep(2)
+                        time.sleep(1)
                         
                         # Capturar datos de la tabla dentro del modal
                         modal_table_xpath = '/html/body/div/div[5]/div/nz-modal-confirm-container/div/div/div/div/div[1]/div/div/table'
@@ -602,7 +602,7 @@ class SunarpScraper:
                             logger.info(f'   ✅ Modal cerrado para fila {index + 1}')
                             
                             # Esperar a que el modal se cierre
-                            time.sleep(1)
+                            # time.sleep(1)
                             
                         except Exception as close_error:
                             logger.warning(f'   ⚠️ No se pudo cerrar el modal: {close_error}')

@@ -58,7 +58,7 @@ class InspeccionTecnicaScraper:
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
             # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=141)
+            self.driver = uc.Chrome(options=options, version_main=143)
             logger.info('✅ Chrome driver configurado exitosamente')
             
             # Ejecutar scripts anti-detección adicionales
@@ -238,7 +238,7 @@ class InspeccionTecnicaScraper:
                     logger.info(f'📄 Datos obtenidos: {json.dumps(data, ensure_ascii=False, indent=2)}')
                     
                     # Verificar si el código de error es -2 (captcha inválido)
-                    if isinstance(data, dict) and data.get('orCodigo') == -2:
+                    if data.get('orCodigo') == "-2":
                         logger.warning('⚠️ Código de error -2: Captcha inválido, se requiere reinicialización')
                         return None
                     

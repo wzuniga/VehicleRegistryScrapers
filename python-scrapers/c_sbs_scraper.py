@@ -63,7 +63,7 @@ class SBSScraper:
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
             # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=141)
+            self.driver = uc.Chrome(options=options, version_main=143)
             logger.info('✅ Chrome driver configurado exitosamente')
             
             # Ejecutar scripts anti-detección adicionales
