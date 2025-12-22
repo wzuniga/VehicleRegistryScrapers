@@ -83,8 +83,26 @@ class ConsultaVehicularScraper:
             except Exception as version_error:
                 logger.warning(f'⚠️ No se pudo usar version_main=143: {version_error}')
                 logger.info('🔄 Intentando sin especificar versión...')
+                # Recrear opciones porque ChromeOptions no se puede reutilizar
+                options_retry = uc.ChromeOptions()
+                options_retry.add_argument('--disable-blink-features=AutomationControlled')
+                options_retry.add_argument('--disable-dev-shm-usage')
+                options_retry.add_argument('--no-sandbox')
+                if headless:
+                    options_retry.add_argument("--headless=new")
+                    options_retry.add_argument('--disable-background-timer-throttling')
+                    options_retry.add_argument('--disable-backgrounding-occluded-windows')
+                    options_retry.add_argument('--disable-renderer-backgrounding')
+                options_retry.add_argument('--window-size=1920,1080')
+                options_retry.add_argument('--disable-extensions')
+                options_retry.page_load_strategy = 'eager'
+                prefs_retry = {
+                    'profile.default_content_setting_values.notifications': 2,
+                    'profile.default_content_settings.popups': 0,
+                }
+                options_retry.add_experimental_option('prefs', prefs_retry)
                 # Intentar sin version_main - autodetección
-                self.driver = uc.Chrome(options=options, use_subprocess=True)
+                self.driver = uc.Chrome(options=options_retry, use_subprocess=True)
                 logger.info('✅ Chrome driver configurado exitosamente (versión autodetectada)')
             
             # Ejecutar scripts anti-detección adicionales
