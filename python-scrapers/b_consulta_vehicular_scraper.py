@@ -76,10 +76,16 @@ class ConsultaVehicularScraper:
         
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
-            # version_main debe coincidir con la versión mayor de Chrome instalada
-            # use_subprocess=True ayuda a evitar problemas de patching
-            self.driver = uc.Chrome(options=options, version_main=143, use_subprocess=True)
-            logger.info('✅ Chrome driver configurado exitosamente')
+            # Intentar primero con version_main específica
+            try:
+                self.driver = uc.Chrome(options=options, version_main=143, use_subprocess=True)
+                logger.info('✅ Chrome driver configurado exitosamente (versión 143)')
+            except Exception as version_error:
+                logger.warning(f'⚠️ No se pudo usar version_main=143: {version_error}')
+                logger.info('🔄 Intentando sin especificar versión...')
+                # Intentar sin version_main - autodetección
+                self.driver = uc.Chrome(options=options, use_subprocess=True)
+                logger.info('✅ Chrome driver configurado exitosamente (versión autodetectada)')
             
             # Ejecutar scripts anti-detección adicionales
             try:
