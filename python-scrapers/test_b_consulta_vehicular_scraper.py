@@ -7,6 +7,8 @@ import argparse
 import base64
 import logging
 import os
+import platform
+import random
 import time
 import warnings
 
@@ -14,6 +16,7 @@ import requests
 import undetected_chromedriver as uc
 from dotenv import load_dotenv
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -30,28 +33,62 @@ warnings.filterwarnings('ignore', category=ResourceWarning)
 warnings.filterwarnings('ignore', message='.*invalid.*handle.*')
 
 # Script CDP para evadir detección de Cloudflare en Linux headless.
-# Falsifica navigator.platform, WebGL renderer, plugins y window.chrome
-# para que el browser parezca un Chrome real en Windows.
 CLOUDFLARE_BYPASS_CDP_SCRIPT = '''
-    // Ocultar webdriver
+    // --- webdriver ---
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 
-    // Fingir plataforma Windows (crítico en Linux headless)
-    Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
-    Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
-    Object.defineProperty(navigator, 'userAgent', {
-        get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36'
-    });
-    Object.defineProperty(navigator, 'appVersion', {
-        get: () => '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36'
-    });
+    // --- Plataforma Windows ---
+    Object.defineProperty(navigator, 'platform',    { get: () => 'Win32' });
+    Object.defineProperty(navigator, 'vendor',      { get: () => 'Google Inc.' });
+    Object.defineProperty(navigator, 'userAgent',   { get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36' });
+    Object.defineProperty(navigator, 'appVersion',  { get: () => '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36' });
 
-    // Idiomas y hardware
-    Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en-US', 'en'] });
+    // --- Hardware ---
+    Object.defineProperty(navigator, 'languages',          { get: () => ['es-ES', 'es', 'en-US', 'en'] });
     Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-    Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+    Object.defineProperty(navigator, 'deviceMemory',        { get: () => 8 });
+    Object.defineProperty(navigator, 'maxTouchPoints',      { get: () => 0 });
 
-    // Plugins realistas (objetos, no números)
+    // --- Conexión de red realista ---
+    Object.defineProperty(navigator, 'connection', {
+        get: () => ({ effectiveType: '4g', rtt: 50, downlink: 10, saveData: false })
+    });
+
+    // --- Screen: crítico — headless reporta 0 o valores extraños ---
+    Object.defineProperty(screen, 'width',       { get: () => 1366 });
+    Object.defineProperty(screen, 'height',      { get: () => 768 });
+    Object.defineProperty(screen, 'availWidth',  { get: () => 1366 });
+    Object.defineProperty(screen, 'availHeight', { get: () => 728 });
+    Object.defineProperty(screen, 'colorDepth',  { get: () => 24 });
+    Object.defineProperty(screen, 'pixelDepth',  { get: () => 24 });
+
+    // --- Window dimensions: outerWidth/Height = 0 en --headless=new ---
+    Object.defineProperty(window, 'outerWidth',  { get: () => 1366 });
+    Object.defineProperty(window, 'outerHeight', { get: () => 900 });
+    Object.defineProperty(window, 'innerWidth',  { get: () => 1366 });
+    Object.defineProperty(window, 'innerHeight', { get: () => 768 });
+    Object.defineProperty(window, 'devicePixelRatio', { get: () => 1 });
+
+    // --- document.hasFocus() = false en headless ---
+    document.hasFocus = () => true;
+
+    // --- Permissions API ---
+    if (navigator.permissions && navigator.permissions.query) {
+        const origQuery = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = (params) => {
+            if (params.name === 'notifications') {
+                return Promise.resolve({ state: 'prompt', onchange: null });
+            }
+            return origQuery(params);
+        };
+    }
+
+    // --- Notification permission ---
+    try {
+        Object.defineProperty(Notification, 'permission', { get: () => 'default' });
+    } catch(e) {}
+
+    // --- Plugins realistas ---
     const makePlugin = (name, filename, description, mimeTypes) => {
         const plugin = Object.create(Plugin.prototype);
         Object.defineProperties(plugin, {
@@ -66,7 +103,7 @@ CLOUDFLARE_BYPASS_CDP_SCRIPT = '''
         type: { value: 'application/pdf' }, suffixes: { value: 'pdf' },
         description: { value: 'Portable Document Format' }
     });
-    const plugins = [
+    const pluginList = [
         makePlugin('PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format', [pdfMime]),
         makePlugin('Chrome PDF Viewer', 'internal-pdf-viewer', '', [pdfMime]),
         makePlugin('Chromium PDF Viewer', 'internal-pdf-viewer', '', [pdfMime]),
@@ -75,11 +112,11 @@ CLOUDFLARE_BYPASS_CDP_SCRIPT = '''
     ];
     Object.defineProperty(navigator, 'plugins', {
         get: () => Object.assign(Object.create(PluginArray.prototype),
-            plugins.reduce((a, p, i) => { a[i] = p; return a; }, { length: plugins.length }))
+            pluginList.reduce((a, p, i) => { a[i] = p; return a; }, { length: pluginList.length }))
     });
 
-    // Falsificar WebGL renderer (ocultar Mesa/llvmpipe del servidor Linux)
-    const getParamHandler = {
+    // --- WebGL: ocultar Mesa/llvmpipe ---
+    const glHandler = {
         apply(target, ctx, args) {
             if (args[0] === 37445) return 'Google Inc. (NVIDIA)';
             if (args[0] === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)';
@@ -87,25 +124,21 @@ CLOUDFLARE_BYPASS_CDP_SCRIPT = '''
         }
     };
     if (WebGLRenderingContext.prototype.getParameter)
-        WebGLRenderingContext.prototype.getParameter = new Proxy(WebGLRenderingContext.prototype.getParameter, getParamHandler);
+        WebGLRenderingContext.prototype.getParameter = new Proxy(WebGLRenderingContext.prototype.getParameter, glHandler);
     if (typeof WebGL2RenderingContext !== 'undefined' && WebGL2RenderingContext.prototype.getParameter)
-        WebGL2RenderingContext.prototype.getParameter = new Proxy(WebGL2RenderingContext.prototype.getParameter, getParamHandler);
+        WebGL2RenderingContext.prototype.getParameter = new Proxy(WebGL2RenderingContext.prototype.getParameter, glHandler);
 
-    // Objeto window.chrome completo
+    // --- window.chrome completo ---
     window.chrome = {
         app: {
             isInstalled: false,
             InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
             RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
-            getDetails: function() { return null; },
-            getIsInstalled: function() { return false; },
-            runningState: function() { return 'cannot_run'; }
+            getDetails: () => null, getIsInstalled: () => false, runningState: () => 'cannot_run'
         },
-        csi: function() {},
-        loadTimes: function() { return {}; },
+        csi: () => {}, loadTimes: () => ({}),
         runtime: {
-            connect: function() {},
-            sendMessage: function() {},
+            connect: () => {}, sendMessage: () => {},
             OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', UPDATE: 'update' },
             PlatformOs: { WIN: 'win', MAC: 'mac', LINUX: 'linux', ANDROID: 'android' }
         }
@@ -121,6 +154,24 @@ class ConsultaVehicularScraper:
 
     def setup_driver(self, headless=False):
         logger.info('Configuring Chrome driver...')
+
+        self._virtual_display = None
+
+        # En Linux: usar Xvfb (virtual display) en vez de --headless=new.
+        # Xvfb hace que Chrome crea que tiene un display real → propiedades
+        # de screen/window correctas → Cloudflare Turnstile auto-verifica.
+        if headless and platform.system() == 'Linux':
+            try:
+                from pyvirtualdisplay import Display
+                self._virtual_display = Display(visible=False, size=(1366, 768))
+                self._virtual_display.start()
+                logger.info('Xvfb virtual display started (1366x768)')
+                headless = False  # Chrome corre sin --headless=new
+            except ImportError:
+                logger.warning('pyvirtualdisplay not installed, falling back to --headless=new')
+                logger.warning('Install with: pip install pyvirtualdisplay')
+            except Exception as e:
+                logger.warning(f'Could not start virtual display: {e}, falling back to --headless=new')
 
         options = uc.ChromeOptions()
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -138,9 +189,9 @@ class ConsultaVehicularScraper:
 
         if headless:
             options.add_argument('--headless=new')
-            logger.info('Headless mode enabled')
+            logger.info('Headless mode enabled (--headless=new)')
         else:
-            logger.info('Headless mode disabled')
+            logger.info('Headless mode disabled (real or virtual display)')
 
         options.page_load_strategy = 'normal'
         prefs = {
@@ -287,6 +338,13 @@ class ConsultaVehicularScraper:
                     logger.error(f'Error closing browser: {e}')
             finally:
                 self.driver = None
+        if getattr(self, '_virtual_display', None):
+            try:
+                self._virtual_display.stop()
+                logger.info('Virtual display stopped')
+            except Exception:
+                pass
+            self._virtual_display = None
 
     def run(self, plate_number=None, plate_id=None, headless=False):
         try:
@@ -335,6 +393,24 @@ class TestConsultaVehicularScraper(ConsultaVehicularScraper):
         super().__init__()
         self.pre_click_delay_seconds = max(0.0, float(pre_click_delay_seconds))
 
+    def _simulate_human_mouse(self):
+        """Move mouse in a natural pattern to signal human presence to Cloudflare."""
+        try:
+            actions = ActionChains(self.driver)
+            body = self.driver.find_element(By.TAG_NAME, 'body')
+            # A few slow, curved moves across the page
+            points = [
+                (random.randint(100, 400), random.randint(100, 300)),
+                (random.randint(400, 800), random.randint(200, 500)),
+                (random.randint(200, 600), random.randint(300, 600)),
+            ]
+            for x, y in points:
+                actions.move_to_element_with_offset(body, x, y)
+                actions.pause(random.uniform(0.2, 0.6))
+            actions.perform()
+        except Exception:
+            pass  # non-critical
+
     def _is_challenge_present(self):
         try:
             page_source = (self.driver.page_source or '').lower()
@@ -370,9 +446,12 @@ class TestConsultaVehicularScraper(ConsultaVehicularScraper):
                 lambda d: d.execute_script('return document.readyState') in ('interactive', 'complete')
             )
 
+            # Simulate human mouse movement to help Turnstile auto-verify
+            self._simulate_human_mouse()
+
             if self._is_challenge_present():
                 logger.info('Challenge detected. Waiting for page clearance...')
-                if not self.wait_for_challenge_clear(timeout=60):
+                if not self.wait_for_challenge_clear(timeout=10):
                     logger.warning('Challenge did not clear in expected time; continuing with best effort')
 
             WebDriverWait(self.driver, 25).until(
@@ -386,6 +465,94 @@ class TestConsultaVehicularScraper(ConsultaVehicularScraper):
             self.take_screenshot(f'nav_error_{int(time.time())}.png')
             return False
 
+    def _is_turnstile_verified(self):
+        """Check if Cloudflare Turnstile already has a token (auto-verified)."""
+        try:
+            token = self.driver.execute_script(
+                "const el = document.querySelector('[name=\"cf-turnstile-response\"]');"
+                "return el ? el.value : null;"
+            )
+            return bool(token and token.strip())
+        except Exception:
+            return False
+
+    def _click_verify_checkbox(self):
+        """Wait for Turnstile auto-verification; click checkbox only if needed."""
+        # First: wait up to 10s for Turnstile to auto-verify (happens on real-looking browsers)
+        logger.info('Waiting for Turnstile auto-verification...')
+        for _ in range(10):
+            if self._is_turnstile_verified():
+                logger.info('Turnstile auto-verified successfully')
+                return True
+            time.sleep(1)
+
+        # Not auto-verified — find the specific Cloudflare iframe and click the checkbox
+        logger.info('Turnstile not auto-verified, attempting manual checkbox click...')
+        try:
+            iframes = self.driver.find_elements(By.TAG_NAME, 'iframe')
+            logger.info(f'Iframes on page: {len(iframes)}')
+            for iframe in iframes:
+                title = iframe.get_attribute('title') or ''
+                src = iframe.get_attribute('src') or ''
+                logger.info(f'  iframe title="{title}" src="{src[:60]}"')
+
+            cf_iframe = None
+            for iframe in iframes:
+                title = (iframe.get_attribute('title') or '').lower()
+                src = (iframe.get_attribute('src') or '').lower()
+                if 'cloudflare' in title or 'security challenge' in title or \
+                   'challenges.cloudflare.com' in src or 'turnstile' in src:
+                    cf_iframe = iframe
+                    break
+
+            if cf_iframe is None:
+                logger.warning('Cloudflare Turnstile iframe not found')
+                return False
+
+            logger.info('Switching to Cloudflare Turnstile iframe...')
+            self.driver.switch_to.frame(cf_iframe)
+
+            checkbox = None
+            for selector in [
+                "input[type='checkbox']",
+                "div[role='checkbox']",
+                "div.ctp-checkbox-container",
+                "#success-checkbox",
+            ]:
+                try:
+                    checkbox = WebDriverWait(self.driver, 3).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                    logger.info(f'Checkbox found with selector: {selector}')
+                    break
+                except Exception:
+                    continue
+
+            if checkbox:
+                checkbox.click()
+                logger.info('Verify checkbox clicked')
+                self.driver.switch_to.default_content()
+                # Wait for the token to appear after click
+                for _ in range(8):
+                    if self._is_turnstile_verified():
+                        logger.info('Turnstile verified after checkbox click')
+                        return True
+                    time.sleep(1)
+                logger.warning('Checkbox clicked but token did not appear')
+                return False
+            else:
+                logger.warning('No clickable checkbox found inside Turnstile iframe')
+                return False
+
+        except Exception as e:
+            logger.warning(f'_click_verify_checkbox error: {e}')
+            return False
+        finally:
+            try:
+                self.driver.switch_to.default_content()
+            except Exception:
+                pass
+
     def click_search_button(self):
         button_xpath = (
             '/html/body/app-root/nz-content/div/app-inicio/app-vehicular/nz-layout/nz-content'
@@ -396,6 +563,9 @@ class TestConsultaVehicularScraper(ConsultaVehicularScraper):
         if self.pre_click_delay_seconds > 0:
             logger.info(f'Waiting {self.pre_click_delay_seconds:.1f}s before clicking search...')
             time.sleep(self.pre_click_delay_seconds)
+
+        # Solve the "Verify you are human" checkbox before submitting
+        self._click_verify_checkbox()
 
         for attempt in range(1, 4):
             try:
