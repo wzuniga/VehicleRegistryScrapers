@@ -6,6 +6,7 @@ Refreshes the page between plates to reset state.
 
 import logging
 import platform
+import re
 import time
 import warnings
 from datetime import datetime
@@ -586,6 +587,7 @@ class SunarpScraper:
                 try:
                     rows = self.driver.find_elements(By.XPATH, f'{tbody_xpath}/tr')
                     clickable_xpath = f'{tbody_xpath}/tr[{index + 1}]/td/div[1]/span'
+                    row_td_xpath = f'{tbody_xpath}/tr[{index + 1}]/td'
 
                     clickable = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, clickable_xpath))
@@ -593,6 +595,15 @@ class SunarpScraper:
                     row_text = clickable.text
                     clickable.click()
                     time.sleep(1)
+
+                    titulo_year = None
+                    titulo_number = None
+                    print('row_text', row_text)
+                    titulo_match = re.search(r'Titulo:\s*(\d{4})\s*-\s*(\d+)', row_text)
+                    print('titulo_match', titulo_match)
+                    if titulo_match:
+                        titulo_year = titulo_match.group(1)
+                        titulo_number = titulo_match.group(2)
 
                     modal_table_xpath = (
                         '/html/body/div/div[5]/div/nz-modal-confirm-container'
@@ -615,6 +626,8 @@ class SunarpScraper:
                     all_data.append({
                         'row_index': index + 1,
                         'row_text': row_text,
+                        'titulo_year': titulo_year,
+                        'titulo_number': titulo_number,
                         'modal_data': modal_data,
                     })
 
@@ -686,6 +699,8 @@ class SunarpScraper:
                     'notes': entry.get('row_text', ''),
                     'createdBy': 1,
                     'plateNumber': plate_number,
+                    'tituloYear': entry.get('titulo_year'),
+                    'tituloNumber': entry.get('titulo_number'),
                 }
                 for key, value in modal_data.items():
                     k = key.lower()
