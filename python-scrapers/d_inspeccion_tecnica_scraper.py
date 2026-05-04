@@ -58,7 +58,7 @@ class InspeccionTecnicaScraper:
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
             # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=143)
+            self.driver = uc.Chrome(options=options, version_main=147)
             logger.info('✅ Chrome driver configurado exitosamente')
             
             # Ejecutar scripts anti-detección adicionales
@@ -263,7 +263,7 @@ class InspeccionTecnicaScraper:
             logger.info('📤 Enviando datos a la API...')
             
             # URL del endpoint
-            api_url = 'http://143.110.206.161:3000/inspeccion-vehicular'
+            api_url = 'http://54.204.68.114:3000/inspeccion-vehicular'
             
             # Payload
             payload = {
@@ -288,7 +288,7 @@ class InspeccionTecnicaScraper:
                 
                 # Marcar placa como cargada en la API
                 logger.info(f'📝 Marcando placa {plate_id} como cargada...')
-                mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/D'
+                mark_loaded_url = f'http://54.204.68.114:3000/pending-car-plates/{plate_id}/mark-loaded/D'
                 mark_response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
                 mark_response.raise_for_status()
                 logger.info(f'✅ Placa {plate_id} marcada como cargada')
@@ -413,7 +413,7 @@ def get_pending_plate():
     try:
         logger.info('🌐 Obteniendo placa pendiente de la API...')
         
-        url = 'http://143.110.206.161:3000/pending-car-plates/unloaded/D/first'
+        url = 'http://54.204.68.114:3000/pending-car-plates/unloaded/D/first'
         headers = {'accept': '*/*'}
         
         response = requests.get(url, headers=headers, timeout=10)

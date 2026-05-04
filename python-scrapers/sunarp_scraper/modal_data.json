@@ -3,36 +3,72 @@
     "row_index": 1,
     "row_text": "",
     "modal_data": {
-      "Inscripción:": "03/05/2024 09:44",
-      "Presentación:": "23/04/2024 16:06",
-      "Rubro:": "Constitución Garantía Mobiliaria y Otros Actos",
-      "Acto:": "Garantía Mobiliaria",
-      "Participantes Naturales:": "CARI CALSIN, LICELY",
-      "Participantes Juridicos:": "PANDERO S.A. EAFC - ESTUDIO DE TITULOS, SANEAMIENTO Y SERVICIOS S.A.C. - ESTISASE S.A.C."
+      "Inscripción:": "23/02/2026 17:42",
+      "Presentación:": "13/02/2026 16:18",
+      "Rubro:": "TRANSFERENCIA DE PROPIEDAD",
+      "Acto:": "COMPRA - VENTA",
+      "Participantes Naturales:": "NAJARRO CUENTA, BRYAN GEUSEPPE",
+      "Participantes Juridicos:": ""
     }
   },
   {
     "row_index": 2,
     "row_text": "",
     "modal_data": {
-      "Inscripción:": "29/04/2024 10:47",
-      "Presentación:": "23/04/2024 16:06",
-      "Rubro:": "Constitución Garantía Mobiliaria y Otros Actos",
-      "Acto:": "Garantía Mobiliaria",
-      "Participantes Naturales:": "CARI CALSIN, LICELY",
-      "Participantes Juridicos:": "PANDERO S.A. EAFC - ESTUDIO DE TITULOS, SANEAMIENTO Y SERVICIOS S.A.C. - ESTISASE S.A.C."
+      "Inscripción:": "30/10/2025 09:02",
+      "Presentación:": "29/10/2025 08:31",
+      "Rubro:": "TRANSFERENCIA DE PROPIEDAD",
+      "Acto:": "COMPRA - VENTA",
+      "Participantes Naturales:": "ZALDIVAR ALVARADO, WILDER CELSO",
+      "Participantes Juridicos:": ""
     }
   },
   {
     "row_index": 3,
     "row_text": "",
     "modal_data": {
-      "Inscripción:": "24/04/2024 10:36",
-      "Presentación:": "22/04/2024 15:23",
+      "Inscripción:": "03/02/2025 10:40",
+      "Presentación:": "06/01/2025 08:39",
+      "Rubro:": "TRANSFERENCIA DE PROPIEDAD",
+      "Acto:": "COMPRA - VENTA",
+      "Participantes Naturales:": "OBLITAS CALCINA, JOSSELINE KAROLINE",
+      "Participantes Juridicos:": ""
+    }
+  },
+  {
+    "row_index": 4,
+    "row_text": "",
+    "modal_data": {
+      "Inscripción:": "26/03/2024 17:03",
+      "Presentación:": "18/03/2024 16:15",
+      "Rubro:": "TRANSFERENCIA DE PROPIEDAD",
+      "Acto:": "COMPRA - VENTA",
+      "Participantes Naturales:": "",
+      "Participantes Juridicos:": "TCEW E.I.R.L."
+    }
+  },
+  {
+    "row_index": 5,
+    "row_text": "",
+    "modal_data": {
+      "Inscripción:": "15/02/2024 00:54",
+      "Presentación:": "06/02/2024 15:15",
+      "Rubro:": "TRANSFERENCIA DE PROPIEDAD",
+      "Acto:": "COMPRA - VENTA",
+      "Participantes Naturales:": "",
+      "Participantes Juridicos:": "PACIFICO COMPAÑIA DE SEGUROS Y REASEGUROS"
+    }
+  },
+  {
+    "row_index": 6,
+    "row_text": "",
+    "modal_data": {
+      "Inscripción:": "14/07/2023 15:29",
+      "Presentación:": "12/07/2023 12:28",
       "Rubro:": "Inscripción de Vehículo",
       "Acto:": "Primera Inscripción de Dominio",
-      "Participantes Naturales:": "CARI CALSIN, LICELY",
-      "Participantes Juridicos:": ""
+      "Participantes Naturales:": "",
+      "Participantes Juridicos:": "DTA MORENO E.I.R.L."
     }
   }
 ]

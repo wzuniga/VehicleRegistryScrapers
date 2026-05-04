@@ -63,7 +63,7 @@ class SBSScraper:
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
             # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=143)
+            self.driver = uc.Chrome(options=options, version_main=147)
             logger.info('✅ Chrome driver configurado exitosamente')
             
             # Ejecutar scripts anti-detección adicionales
@@ -309,7 +309,7 @@ class SBSScraper:
             logger.info('📤 Enviando resultados a la API...')
             
             # URL del endpoint
-            api_url = 'http://143.110.206.161:3000/sbs-insurance'
+            api_url = 'http://54.204.68.114:3000/sbs-insurance'
             
             # Mapear results al formato esperado por la API
             payload = {
@@ -339,7 +339,7 @@ class SBSScraper:
                 
                 # Marcar placa como cargada en la API
                 logger.info(f'📝 Marcando placa {plate_id} como cargada...')
-                mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/C'
+                mark_loaded_url = f'http://54.204.68.114:3000/pending-car-plates/{plate_id}/mark-loaded/C'
                 mark_response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
                 mark_response.raise_for_status()
                 logger.info(f'✅ Placa {plate_id} marcada como cargada')
@@ -489,7 +489,7 @@ def get_pending_plate():
     try:
         logger.info('🌐 Obteniendo placa pendiente de la API...')
         
-        url = 'http://143.110.206.161:3000/pending-car-plates/unloaded/C/first'
+        url = 'http://54.204.68.114:3000/pending-car-plates/unloaded/C/first'
         headers = {'accept': '*/*'}
         
         response = requests.get(url, headers=headers, timeout=10)
@@ -545,7 +545,7 @@ def main():
                     plate_number=plate_number,  # Placa obtenida de la API
                     plate_id=plate_id,          # ID de la placa para marcar como cargada
                     wait_time=0,                # Tiempo de espera al final (opcional, default: 100)
-                    headless=True               # Modo headless (opcional, default: False)
+                    headless=False               # Modo headless (opcional, default: False)
                 )
                 
                 if success:

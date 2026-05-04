@@ -24,6 +24,89 @@ import warnings
 warnings.filterwarnings('ignore', category=ResourceWarning)
 warnings.filterwarnings('ignore', message='.*invalid.*handle.*')
 
+# Script CDP compartido para evadir detección de Cloudflare en Linux headless.
+# Falsifica navigator.platform, WebGL renderer, plugins y window.chrome
+# para que el browser parezca un Chrome real en Windows.
+CLOUDFLARE_BYPASS_CDP_SCRIPT = '''
+    // Ocultar webdriver
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+    // Fingir plataforma Windows (crítico en Linux headless)
+    Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+    Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
+    Object.defineProperty(navigator, 'userAgent', {
+        get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36'
+    });
+    Object.defineProperty(navigator, 'appVersion', {
+        get: () => '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36'
+    });
+
+    // Idiomas y hardware
+    Object.defineProperty(navigator, 'languages', { get: () => ['es-ES', 'es', 'en-US', 'en'] });
+    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+    Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+
+    // Plugins realistas (objetos, no números)
+    const makePlugin = (name, filename, description, mimeTypes) => {
+        const plugin = Object.create(Plugin.prototype);
+        Object.defineProperties(plugin, {
+            name: { value: name }, filename: { value: filename },
+            description: { value: description }, length: { value: mimeTypes.length }
+        });
+        mimeTypes.forEach((mt, i) => { plugin[i] = mt; });
+        return plugin;
+    };
+    const pdfMime = Object.create(MimeType.prototype);
+    Object.defineProperties(pdfMime, {
+        type: { value: 'application/pdf' }, suffixes: { value: 'pdf' },
+        description: { value: 'Portable Document Format' }
+    });
+    const plugins = [
+        makePlugin('PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format', [pdfMime]),
+        makePlugin('Chrome PDF Viewer', 'internal-pdf-viewer', '', [pdfMime]),
+        makePlugin('Chromium PDF Viewer', 'internal-pdf-viewer', '', [pdfMime]),
+        makePlugin('Microsoft Edge PDF Viewer', 'internal-pdf-viewer', '', [pdfMime]),
+        makePlugin('WebKit built-in PDF', 'internal-pdf-viewer', '', [pdfMime]),
+    ];
+    Object.defineProperty(navigator, 'plugins', {
+        get: () => Object.assign(Object.create(PluginArray.prototype),
+            plugins.reduce((a, p, i) => { a[i] = p; return a; }, { length: plugins.length }))
+    });
+
+    // Falsificar WebGL renderer (ocultar Mesa/llvmpipe del servidor Linux)
+    const getParamHandler = {
+        apply(target, ctx, args) {
+            if (args[0] === 37445) return 'Google Inc. (NVIDIA)';
+            if (args[0] === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+            return Reflect.apply(target, ctx, args);
+        }
+    };
+    if (WebGLRenderingContext.prototype.getParameter)
+        WebGLRenderingContext.prototype.getParameter = new Proxy(WebGLRenderingContext.prototype.getParameter, getParamHandler);
+    if (typeof WebGL2RenderingContext !== 'undefined' && WebGL2RenderingContext.prototype.getParameter)
+        WebGL2RenderingContext.prototype.getParameter = new Proxy(WebGL2RenderingContext.prototype.getParameter, getParamHandler);
+
+    // Objeto window.chrome completo
+    window.chrome = {
+        app: {
+            isInstalled: false,
+            InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+            RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+            getDetails: function() { return null; },
+            getIsInstalled: function() { return false; },
+            runningState: function() { return 'cannot_run'; }
+        },
+        csi: function() {},
+        loadTimes: function() { return {}; },
+        runtime: {
+            connect: function() {},
+            sendMessage: function() {},
+            OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', UPDATE: 'update' },
+            PlatformOs: { WIN: 'win', MAC: 'mac', LINUX: 'linux', ANDROID: 'android' }
+        }
+    };
+'''
+
 
 class ConsultaVehicularScraper:
     def __init__(self):
@@ -34,74 +117,55 @@ class ConsultaVehicularScraper:
     def setup_driver(self, headless=False):
         """Configura el driver de Chrome con opciones anti-detección"""
         logger.info('🚀 Configurando Chrome driver...')
-        
+
         options = uc.ChromeOptions()
-        
+
         # Opciones básicas para evitar detección
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--no-sandbox')
-        
+        options.add_argument('--lang=es-ES')
+        options.add_argument(
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/147.0.0.0 Safari/537.36'
+        )
+
         # Modo headless configurable
         if headless:
             options.add_argument('--headless=new')
             logger.info('🔇 Modo headless activado')
         else:
             logger.info('👁️ Modo headless desactivado (navegador visible)')
-        
+
         # Configurar viewport
         options.add_argument('--window-size=1250,750')
-        
-        # Optimizaciones de rendimiento - sin bloquear imágenes (necesarias para captcha)
         options.add_argument('--disable-extensions')
         options.add_argument('--disable-gpu')
-        options.add_argument('--disable-software-rasterizer')
-        
+
         # Estrategia de carga de página: 'eager' no espera recursos externos
         options.page_load_strategy = 'eager'
-        
-        # Preferencias adicionales - bloquear solo recursos no críticos
+
+        # Preferencias mínimas — NO bloquear CSS/fonts/media:
+        # Cloudflare los necesita para sus challenges JS y canvas fingerprint.
         prefs = {
             'profile.default_content_setting_values.notifications': 2,
             'profile.default_content_settings.popups': 0,
-            'profile.managed_default_content_settings.stylesheets': 2,  # Bloquear CSS
-            'profile.managed_default_content_settings.fonts': 2,  # Bloquear fuentes
-            'profile.managed_default_content_settings.media_stream': 2,  # Bloquear media
         }
         options.add_experimental_option('prefs', prefs)
-        
+
         try:
-            # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
-            # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=143)
+            self.driver = uc.Chrome(options=options, version_main=147)
             logger.info('✅ Chrome driver configurado exitosamente')
-            
-            # Ejecutar scripts anti-detección adicionales
+
             try:
                 self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                    'source': '''
-                        Object.defineProperty(navigator, 'webdriver', {
-                            get: () => undefined
-                        });
-                        
-                        Object.defineProperty(navigator, 'languages', {
-                            get: () => ['es-ES', 'es', 'en-US', 'en']
-                        });
-                        
-                        Object.defineProperty(navigator, 'plugins', {
-                            get: () => [1, 2, 3, 4, 5]
-                        });
-                        
-                        window.chrome = {
-                            runtime: {}
-                        };
-                    '''
+                    'source': CLOUDFLARE_BYPASS_CDP_SCRIPT
                 })
                 logger.info('✅ Scripts anti-detección inyectados')
             except Exception as cdp_error:
                 logger.warning(f'⚠️ No se pudieron inyectar scripts CDP: {cdp_error}')
-                logger.info('ℹ️ Continuando sin scripts CDP adicionales')
-            
+
             return True
         except Exception as e:
             logger.error(f'❌ Error configurando driver: {e}')
@@ -240,14 +304,17 @@ class ConsultaVehicularScraper:
             response = requests.post(api_url, json=payload, headers=headers, timeout=60)
             
             # Verificar respuesta
-            if response.status_code in [200, 201]:               
-                # Marcar placa como cargada en la API
-                logger.info(f'📝 Marcando placa {plate_id} como cargada...')
-                mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/B'
-                mark_response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
-                mark_response.raise_for_status()
-                logger.info(f'✅ Placa {plate_id} marcada como cargada')
-                
+            if response.status_code in [200, 201]:
+                # En pruebas manuales puede no existir plate_id; en ese caso solo se envía la imagen.
+                if plate_id is not None and str(plate_id).strip() != '':
+                    logger.info(f'📝 Marcando placa {plate_id} como cargada...')
+                    mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/B'
+                    mark_response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
+                    mark_response.raise_for_status()
+                    logger.info(f'✅ Placa {plate_id} marcada como cargada')
+                else:
+                    logger.info('ℹ️ Ejecución manual sin plate_id: se omite mark-loaded')
+
                 return True
             else:
                 logger.error(f'❌ Error al enviar imagen. Status: {response.status_code}, Respuesta: {response.text}')
@@ -294,7 +361,7 @@ class ConsultaVehicularScraper:
             if not self.fill_plate_number(plate_number):
                 return False
             
-            # Esperar 3 segundos después de llenar la placa
+            # Esperar 7 segundos después de llenar la placa
             time.sleep(7)
             
             # Hacer click en el botón de búsqueda

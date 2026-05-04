@@ -78,7 +78,7 @@ class SunarpScraper:
         try:
             # undetected_chromedriver maneja automáticamente la mayoría de opciones anti-detección
             # version_main debe coincidir con la versión mayor de Chrome instalada
-            self.driver = uc.Chrome(options=options, version_main=143)
+            self.driver = uc.Chrome(options=options, version_main=147)
             logger.info('✅ Chrome driver configurado exitosamente')
             
             # Ejecutar scripts anti-detección adicionales
@@ -702,7 +702,7 @@ class SunarpScraper:
         try:
             logger.info(f'🔢 Obteniendo versión máxima para placa {plate_number}...')
             
-            url = f'http://143.110.206.161:3000/sprl-sunarp/plate/{plate_number}/max-version'
+            url = f'http://54.204.68.114:3000/sprl-sunarp/plate/{plate_number}/max-version'
             headers = {'accept': '*/*'}
             
             response = requests.get(url, headers=headers, timeout=10)
@@ -732,7 +732,7 @@ class SunarpScraper:
             
             # 2. Crear/actualizar registro de placa maestra
             logger.info(f'📝 Creando registro de placa maestra para {plate_number}...')
-            master_plate_url = 'http://143.110.206.161:3000/license-plate-master'
+            master_plate_url = 'http://54.204.68.114:3000/license-plate-master'
             master_plate_data = {
                 'plateNumber': plate_number
             }
@@ -746,7 +746,7 @@ class SunarpScraper:
             logger.info(f'✅ Registro de placa maestra creado')
             
             # 3. Enviar cada registro de all_data a la API
-            sunarp_url = 'http://143.110.206.161:3000/sprl-sunarp'
+            sunarp_url = 'http://54.204.68.114:3000/sprl-sunarp'
             success_count = 0
             error_count = 0
             
@@ -809,7 +809,7 @@ class SunarpScraper:
 
             # 1. Marcar placa como cargada
             logger.info(f'📝 Marcando placa {plate_id} como cargada...')
-            mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/A'
+            mark_loaded_url = f'http://54.204.68.114:3000/pending-car-plates/{plate_id}/mark-loaded/A'
             response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
             response.raise_for_status()
             logger.info(f'✅ Placa {plate_id} marcada como cargada')
@@ -1000,7 +1000,7 @@ def get_pending_plate():
     try:
         logger.info('🌐 Obteniendo placa pendiente de la API...')
         
-        url = 'http://143.110.206.161:3000/pending-car-plates/unloaded/A/first'
+        url = 'http://54.204.68.114:3000/pending-car-plates/unloaded/A/first'
         headers = {'accept': '*/*'}
         
         response = requests.get(url, headers=headers, timeout=10)

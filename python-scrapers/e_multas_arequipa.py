@@ -94,7 +94,7 @@ class MultasArequipaScraper:
             logger.info('📤 Enviando datos a la API...')
             
             # URL del endpoint (ajustar según el endpoint real)
-            api_url = 'http://143.110.206.161:3000/multas-arequipa'
+            api_url = 'http://54.204.68.114:3000/multas-arequipa'
             
             # Payload
             payload = {
@@ -119,7 +119,7 @@ class MultasArequipaScraper:
                 
                 # Marcar placa como cargada en la API
                 logger.info(f'📝 Marcando placa {plate_id} como cargada...')
-                mark_loaded_url = f'http://143.110.206.161:3000/pending-car-plates/{plate_id}/mark-loaded/E'
+                mark_loaded_url = f'http://54.204.68.114:3000/pending-car-plates/{plate_id}/mark-loaded/E'
                 mark_response = requests.patch(mark_loaded_url, headers={'accept': '*/*'}, timeout=10)
                 mark_response.raise_for_status()
                 logger.info(f'✅ Placa {plate_id} marcada como cargada')
@@ -167,7 +167,7 @@ def get_pending_plate():
     try:
         logger.info('🌐 Obteniendo placa pendiente de la API...')
         
-        url = 'http://143.110.206.161:3000/pending-car-plates/unloaded/E/first'
+        url = 'http://54.204.68.114:3000/pending-car-plates/unloaded/E/first'
         headers = {'accept': '*/*'}
         
         response = requests.get(url, headers=headers, timeout=10)
