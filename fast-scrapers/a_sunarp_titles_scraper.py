@@ -275,6 +275,8 @@ class SunarpTitlesScraper:
 
     def click_search_button(self):
         """Wait for Cloudflare check then submit the form."""
+        NO_RESULTS_XPATH = '/html/body/div[2]/div/div[2]/div[1]/table/tbody/tr[1]/td[2]'
+        ERROR_MODAL_XPATH = '/html/body/div[2]/div'
         try:
             btn_xpath = (
                 '/html/body/app-root/app-ingreso/body/div/div[1]/div/div/div/form/div[7]/div/div/button'
@@ -285,9 +287,30 @@ class SunarpTitlesScraper:
             )
             btn.click()
             logger.info('Search button clicked — waiting for results page...')
+
+            # # Fast check: error modal at /html/body/div[2]/div appears within ~2s on failure
+            # try:
+            #     WebDriverWait(self.driver, 2).until(
+            #         EC.presence_of_element_located((By.XPATH, ERROR_MODAL_XPATH))
+            #     )
+            #     logger.info('Error modal detected early — skipping to next plate')
+            #     return 'no_results'
+            # except TimeoutException:
+            #     pass  # No early modal — proceed to wait for real results
+
             WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.TAG_NAME, 'app-titulo'))
+                lambda d: (
+                    len(d.find_elements(By.TAG_NAME, 'app-titulo')) > 0 or
+                    any(
+                        'Su búsqueda no ha obtenido resultados' in el.text
+                        for el in d.find_elements(By.XPATH, NO_RESULTS_XPATH)
+                    )
+                )
             )
+            no_results_els = self.driver.find_elements(By.XPATH, NO_RESULTS_XPATH)
+            if no_results_els and 'Su búsqueda no ha obtenido resultados' in no_results_els[0].text:
+                logger.info('No results found for this titulo — skipping')
+                return 'no_results'
             time.sleep(2)
             logger.info('Results page loaded')
             return True
@@ -432,8 +455,9 @@ class SunarpTitlesScraper:
                 return False
             if not self.fill_titulo_number(titulo_number):
                 return False
-            if not self.click_search_button():
-                return False
+            result = self.click_search_button()
+            if result != True:
+                return result  # False or 'no_results'
             if not self.click_result_link():
                 return False
 
@@ -517,8 +541,10 @@ def main():
         while True:
             pending = get_pending_titles()
             if not pending:
-                logger.info('No pending titles — waiting 10s...')
-                time.sleep(10)
+                logger.info('No pending titles — closing browser and waiting 5s...')
+                scraper.cleanup()
+                needs_restart = True
+                time.sleep(5)
                 continue
 
             for job in pending:
@@ -535,11 +561,12 @@ def main():
                     logger.warning(f'No office for plate {plate_number} (titulo {titulo_year}/{titulo_number}) — skipping')
                     continue
 
+                job_failed = False
                 while True:
                     if needs_restart:
                         scraper.cleanup()
                         scraper = SunarpTitlesScraper()
-                        if not scraper.setup_driver(headless=False):
+                        if not scraper.setup_driver(headless=True):
                             logger.error('Driver setup failed — retrying in 5s')
                             time.sleep(5)
                             continue
@@ -550,13 +577,26 @@ def main():
                         needs_restart = False
 
                     success = scraper.process(office_name, titulo_year, titulo_number)
-                    if success:
-                        logger.info(f'Done: {titulo_year}/{titulo_number} — restarting browser')
+                    if success is True:
+                        logger.info(f'Done: {titulo_year}/{titulo_number}')
+                        if not scraper.close_modal_and_return_to_form():
+                            logger.warning('Could not return to form — restarting browser')
+                        needs_restart = True
+                        break
+                    elif success == 'no_results':
+                        logger.info(f'No results for {titulo_year}/{titulo_number} — skipping to next plate')
+                        # if not scraper.close_modal_and_return_to_form():
+                        #     logger.warning('Could not return to form — restarting browser')
                         needs_restart = True
                         break
                     else:
-                        logger.warning('Processing failed — restarting browser')
+                        logger.warning('Processing failed — fetching new plate from API')
                         needs_restart = True
+                        job_failed = True
+                        break
+
+                if job_failed:
+                    break
 
     except KeyboardInterrupt:
         logger.info('Stopped by user')

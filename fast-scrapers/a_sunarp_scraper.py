@@ -592,7 +592,7 @@ class SunarpScraper:
                     clickable = WebDriverWait(self.driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, clickable_xpath))
                     )
-                    row_text = clickable.text
+                    row_text = self.driver.find_element(By.XPATH, row_td_xpath).text
                     clickable.click()
                     time.sleep(1)
 
@@ -696,7 +696,7 @@ class SunarpScraper:
                     'actType': None,
                     'naturalParticipants': None,
                     'legalParticipants': None,
-                    'notes': entry.get('row_text', ''),
+                    'notes': None,
                     'createdBy': 1,
                     'plateNumber': plate_number,
                     'tituloYear': entry.get('titulo_year'),
